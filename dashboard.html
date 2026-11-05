@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent Wilds · 指挥台</title>
+<style>
+:root{--bg:#0e1116;--panel:#171b22;--panel2:#1d222b;--line:#262d38;--tx:#e6e9ef;--mut:#8b95a5;
+--hp:#ef5b5b;--ap:#4f9bff;--xp:#43c985;--food:#e8a54b;--forest:#43c985;--A:#f2b84b;--B:#b78cff}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 10% -10%,#1a2230 0,var(--bg) 60%) fixed;color:var(--tx);
+font:13px/1.4 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;
+background:rgba(14,17,22,.88);backdrop-filter:blur(8px);z-index:5}
+h1{font-size:16px;margin:0}h1 b{color:var(--xp)}
+.live{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:12px;margin-left:auto}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--xp);animation:p 2s infinite}.dot.bad{background:var(--hp);animation:none}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(67,201,133,.6)}70%,100%{box-shadow:0 0 0 8px rgba(67,201,133,0)}}
+main{padding:16px 20px;max-width:1700px;margin:auto}
+.sect{color:var(--mut);font-size:12px;letter-spacing:1px;margin:14px 0 8px}
+.needs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.need{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.need .h{display:flex;justify-content:space-between}.need b{font-size:15px}
+.need .s{color:var(--mut);font-size:12px;margin-top:4px}
+.bar{height:7px;background:#242b36;border-radius:4px;overflow:hidden;position:relative;min-width:60px}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;transition:width .6s}
+.bar .b2{opacity:.45}
+.hp i{background:linear-gradient(90deg,#c94444,var(--hp))}.ap i{background:linear-gradient(90deg,#3a76cc,var(--ap))}
+.xp i{background:linear-gradient(90deg,#2f9d68,var(--xp))}.fd i{background:linear-gradient(90deg,#b97d2e,var(--food))}
+.wood i{background:#b98a52}.stone i{background:#9aa6b6}.ore i{background:#e08a45}
+.wrap{overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:1250px}
+th{position:sticky;top:0;background:var(--panel2);color:var(--mut);font-weight:500;font-size:12px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:7px 10px;border-bottom:1px solid #20262f;vertical-align:middle}
+tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a1717}
+.nm{font-weight:650}.lv{display:inline-block;margin-left:6px;padding:0 6px;border-radius:5px;background:var(--c);color:#0b0d11;font-size:11px;font-weight:700}
+.pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;border:1px solid var(--c);color:var(--c);white-space:nowrap}
+.num{font-variant-numeric:tabular-nums;font-size:12px;color:var(--tx);margin-bottom:3px;white-space:nowrap}.num small{color:var(--mut)}
+.job{font-weight:600}.note{color:var(--mut);font-size:12px;max-width:340px}
+.mats span{display:inline-block;margin:0 6px 2px 0;padding:0 6px;border-radius:5px;background:#232a35;font-size:12px}
+.tgt{color:#7fc8ff;font-weight:550}.low{color:#ff9a9a}.warn{color:#f2b84b}.mut{color:var(--mut)}
+.feed{height:300px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}
+.feed div{padding:1px 6px;border-left:2px solid transparent;word-break:break-word}
+.feed .kill{border-color:var(--xp);color:#b8f0d3}.feed .bad{border-color:var(--hp);color:#ffb0b0;background:#2a1717}
+.feed .go{border-color:var(--A);color:#f6dd9f}.feed .mut{color:#667082}.feed .gear{border-color:var(--B);color:#d6c1ff}
+</style>
+<header><h1>AGENT <b>WILDS</b> · 指挥台</h1><div class="live"><span class="dot" id="dot"></span><span id="t">连接中…</span></div></header>
+<main>
+<p class="sect">英雄一览</p>
+<div class="wrap"><table><thead><tr>
+<th>英雄</th><th>职业</th><th>等级</th><th>经验</th><th>经验变化 (10分钟)</th><th>生命</th><th>行动点</th><th>饱食</th><th>位置 / 目标</th><th>任务 / 当前动作</th><th>背包材料</th><th>装备 / 战力</th><th>金币 / 食物</th>
+</tr></thead><tbody id="rows"></tbody></table></div>
+<p class="sect">实时活动 <span id="lv"></span></p><div class="feed" id="l"></div>
+</main>
+<script>
+const COL={forest:'#43c985',forestE:'#43c985',meadowA:'#f2b84b',meadowB:'#b78cff',meadowC:'#5ab0f2',meadowD:'#f27a8a',main:'#43c985',corrupt:'#e0603c'};
+const SQ={forest:'魔王·森林西',forestE:'主角·森林东',main:'主角·森林东',corrupt:'腐化之地',meadowA:'草甸A',meadowB:'草甸B',meadowC:'草甸C',meadowD:'草甸D'};
+const RING={camp:'营地',meadow:'草甸',forest:'森林',highlands:'高地',ashlands:'灰烬地'};
+const RES={wood:'木材',stone:'石头',ore:'铜矿'};
+const pct=(a,b)=>b?Math.max(0,Math.min(100,100*a/b)):0;
+const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const bar=(cls,a,b)=>`<div class="bar ${cls}"><i style="width:${pct(a,b)}%"></i></div>`;
+function row(h,now){
+ const age=Math.round(now-h.at),c=COL[h.squad]||'#8b95a5',low=h.hp<0.35*h.max_hp;
+ const mats=Object.entries(h.mats||{}).map(([k,v])=>`<span>${RES[k]||k} ${v}</span>`).join('')||'<span class=mut>空</span>';
+ const job=h.job?`<span class="job">${RES[h.job]||h.job}</span> · `:'';
+ const nage=h.note_at?Math.round(now-h.note_at):0;
+ const fd=h.food;
+ return `<tr class="${age>240?'old':''} ${h.down?'down':''}">
+ <td><span class=nm>${h.name}</span><br><span class=pill style="--c:${c}">${SQ[h.squad]||h.squad||'-'}</span></td>
+ <td>${h.title||'-'}</td>
+ <td><div class=num>L${h.level}</div></td>
+ <td><div class=num>${h.xp}<small> / ${h.xp_next}</small></div>${bar('xp',h.xp,h.xp_next)}</td>
+ <td><div class=num style="color:${h.xp_gain>0?'#8fe0b0':'inherit'}">${h.xp_gain==null?'-':'+'+h.xp_gain}</div>${h.xp_win!=null&&h.xp_win<590?`<small class=mut>${Math.max(1,Math.round(h.xp_win/60))} 分钟内</small>`:''}</td>
+ <td><div class="num ${low?'low':''}">${h.hp}<small> / ${h.max_hp}</small></div>${bar('hp',h.hp,h.max_hp)}</td>
+ <td><div class=num>${h.ap}<small> / ${h.ap_max||'-'}</small></div>${bar('ap',h.ap,h.ap_max||320)}</td>
+ <td><div class="num ${fd!=null&&fd<40?'warn':''}">${fd==null?'-':fd}<small> / 100</small></div>${bar('fd',fd||0,100)}</td>
+ <td>${RING[h.ring]||h.ring} <small class=mut>${h.x}, ${h.y}</small><br>${h.target?`<span class=tgt>→ ${h.target.x}, ${h.target.y} <small>${RES[h.target.label]||h.target.label}</small></span>`:'<small class=mut>无目标</small>'}</td>
+ <td>${job}${esc(h.note||'—')}<div class=note>${h.lease?'租约: '+h.lease:''} ${nage?'· '+nage+'s 前':''}</div></td>
+ <td class=mats>${mats}</td>
+ <td>${h.weapon?h.weapon+' L'+h.weapon_level:'<span class=low>无武器</span>'}<br><small class=mut>${h.tool?h.tool+' '+h.tool_dur+'/'+h.tool_max:'无工具'} · 战力 ${h.power??'-'}</small></td>
+ <td>🪙 ${h.coins}<br><small class=mut>${foodText(h)}</small></td></tr>`}
+const LV=['DEBUG','INFO','NOTICE','WARNING','ERROR'],LC={DEBUG:'#667082',INFO:'#9fb3c8',NOTICE:'#5fe0a0',WARNING:'#f2b84b',ERROR:'#ff7b7b'};
+let show=JSON.parse(localStorage.getItem('lv')||'{"DEBUG":false,"INFO":true,"NOTICE":true,"WARNING":true,"ERROR":true}'),last=[];
+document.getElementById('lv').innerHTML=LV.map(v=>`<label style="margin-right:12px;color:${LC[v]};cursor:pointer"><input type=checkbox data-lv=${v} ${show[v]?'checked':''}> ${v}</label>`).join('');
+document.getElementById('lv').onchange=e=>{show[e.target.dataset.lv]=e.target.checked;localStorage.setItem('lv',JSON.stringify(show));feed(last)};
+function feed(lines){
+ last=lines;
+ const l=document.getElementById('l'),down=l.scrollTop+l.clientHeight>=l.scrollHeight-30;
+ l.innerHTML=lines.map(x=>{
+  const m=x.match(/^(\d\d:\d\d:\d\d )?(DEBUG|INFO|NOTICE|WARNING|ERROR)? *(.*)$/),lv=m[2]||'INFO',body=m[3];
+  if(!show[lv])return '';
+  return `<div style="color:${LC[lv]};border-color:${LC[lv]}">${m[1]||''}${lv.padEnd(7,' ').replace(/ /g,'\u00a0')} ${esc(body.replace(/^\[([^\]]+)\]\s*/,'$1 · '))}</div>`}).join('');
+ if(down)l.scrollTop=l.scrollHeight}
+const FN={bandage:'绷带',bread:'面包',roast:'烤肉',meat:'肉',stew:'炖肉',pie:'派',veggie_soup:'蔬菜汤',wheat:'小麦',carrot:'胡萝卜',corn:'玉米',pumpkin:'南瓜'};
+const foodText=h=>h.items?Object.entries(h.items).map(([k,v])=>(FN[k]||k)+' '+v).join(' · ')||'无':[(h.bread!=null?'面包 '+h.bread:''),(h.meat!=null?'肉 '+h.meat:''),(h.roast?'烤肉 '+h.roast:'')].join(' ');
+async function tick(){
+ try{
+  const s=await (await fetch('/state')).json(),now=Date.now()/1000;
+  document.getElementById('rows').innerHTML=s.heroes.map(h=>row(h,now)).join('');
+  feed(s.log);
+  document.getElementById('dot').className='dot';document.getElementById('t').textContent='实时 · '+new Date().toLocaleTimeString();
+ }catch(e){document.getElementById('dot').className='dot bad';document.getElementById('t').textContent='断开 '+e}
+}
+tick();setInterval(tick,15000);
+</script></html>

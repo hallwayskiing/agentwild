@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "D:\Codes\baw\agentwild\wild.py", line 229, in <module>
+    main()
+  File "D:\Codes\baw\agentwild\wild.py", line 178, in main
+    plan()
+  File "D:\Codes\baw\agentwild\wild.py", line 120, in plan
+    for line in rules.describe():
+                ^^^^^^^^^^^^^^^^
+  File "D:\Codes\baw\agentwild\wild\rules.py", line 81, in describe
+    sq = "；".join("%s：%s（等级低的先收尾，都打到 %d 级；打 %s）" % (
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Codes\baw\agentwild\wild\rules.py", line 82, in <genexpr>
+    {"forest": "森林队（主角+魔王）", "meadowA": "草甸A队", "meadowB": "草甸B队"}[k],
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+KeyError: 'forestE'
+Traceback (most recent call last):
+  File "D:\Codes\baw\agentwild\wild.py", line 229, in <module>
+    main()
+  File "D:\Codes\baw\agentwild\wild.py", line 178, in main
+    plan()
+  File "D:\Codes\baw\agentwild\wild.py", line 120, in plan
+    for line in rules.describe():
+                ^^^^^^^^^^^^^^^^
+  File "D:\Codes\baw\agentwild\wild\rules.py", line 81, in describe
+    sq = "；".join("%s：%s（等级低的先收尾，都打到 %d 级；打 %s）" % (
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Codes\baw\agentwild\wild\rules.py", line 82, in <genexpr>
+    {"forest": "森林队（主角+魔王）", "meadowA": "草甸A队", "meadowB": "草甸B队"}[k],
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+KeyError: 'forestE'

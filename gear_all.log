@@ -1,0 +1,34 @@
+[gear] greaves treasured L1: 930 -> 933: 200 
+[gear] bow treasured L5: 930 -> 933: 200 
+  933 equips bow L5 treasured: 200
+  933 equips greaves L1 treasured: 200
+[gear] cuirass runed L3: 932 -> main: 200 
+[gear] gauntlets treasured L6: 932 -> main: 200 
+[gear] helm plain L4: 932 -> main: 200 
+[gear] treads plain L3: 932 -> main: 200 
+[gear] amulet runed L4: 932 -> main: 200 
+  main equips spear L4 set: 200
+  main equips gauntlets L6 treasured: 200
+  main equips amulet L4 runed: 200
+  main equips cuirass L3 runed: 200
+  main equips helm L4 plain: 200
+  main equips treads L3 plain: 200
+[gear] gauntlets runed L4: 930 -> 934: 200 
+  934 equips gauntlets L4 runed: 429
+  934 equips gauntlets L4 runed: 429
+[gear] gauntlets runed L4: 933 -> 931: 200 
+  931 equips gauntlets L4 runed: 200
+[gear] band runed L6: 931 -> 933: 200 
+  933 equips band L6 runed: 200
+[gear] band runed L6: main -> 934: 200 
+[gear] bow set L7: main -> 934: 200 
+  934 equips bow L7 set: 200
+  934 equips band L6 runed: 200
+  934 equips gauntlets L4 runed: 200
+[gear] amulet runed L1: main -> 933: 200 
+[gear] gauntlets runed L6: main -> 933: 200 
+  933 equips gauntlets L6 runed: 200
+  933 equips amulet L1 runed: 200
+[gear] maul runed L5: 925 -> 932: 200 
+  932 equips maul L5 runed: 200
+[gear] greaves plain L3: 933 -> 934: 429 Rate limit exceeded

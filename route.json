@@ -1,0 +1,286 @@
+{
+ "chains": {
+  "forest": [
+   [
+    356,
+    256
+   ],
+   [
+    350,
+    259
+   ],
+   [
+    345,
+    262
+   ],
+   [
+    340,
+    265
+   ]
+  ]
+ },
+ "safe_clearance": 4,
+ "updated": "2026-11-05 11:11:59",
+ "assessment": {
+  "forest": {
+   "clearance": 7.0,
+   "blockers": []
+  }
+ },
+ "best": "forest",
+ "safe_now": true,
+ "history": [
+  {
+   "t": "2026-11-03 09:46:06",
+   "unit": 929,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:11:54",
+   "unit": 928,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 18:39:35",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:40:35",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:41:37",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:42:39",
+   "unit": 925,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 18:47:02",
+   "unit": 934,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:48:02",
+   "unit": 934,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:48:33",
+   "unit": 932,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 18:49:07",
+   "unit": 934,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:49:24",
+   "unit": 927,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:50:09",
+   "unit": 934,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 18:50:24",
+   "unit": 927,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:51:37",
+   "unit": 927,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:52:20",
+   "unit": 929,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:53:25",
+   "unit": 929,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:54:27",
+   "unit": 929,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:56:19",
+   "unit": 933,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:57:20",
+   "unit": 933,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 18:58:22",
+   "unit": 933,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 19:26:20",
+   "unit": 931,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 19:27:20",
+   "unit": 931,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 19:28:22",
+   "unit": 931,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 19:53:35",
+   "unit": null,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 19:57:40",
+   "unit": 930,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-03 20:00:41",
+   "unit": 930,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:25:28",
+   "unit": 932,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:25:51",
+   "unit": 930,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:26:05",
+   "unit": 933,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:27:59",
+   "unit": 934,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:30:56",
+   "unit": 928,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:32:34",
+   "unit": null,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:37:35",
+   "unit": 927,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:41:30",
+   "unit": 925,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-03 23:57:34",
+   "unit": 932,
+   "entry": "highlands",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-04 00:49:18",
+   "unit": 933,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-04 11:02:18",
+   "unit": 927,
+   "entry": "highlands",
+   "outcome": "fell"
+  },
+  {
+   "t": "2026-11-05 10:32:26",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-05 10:33:34",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-05 10:33:38",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-05 10:34:15",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-05 10:44:46",
+   "unit": 928,
+   "entry": "forest",
+   "outcome": "arrived"
+  }
+ ]
+}
