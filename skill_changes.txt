@@ -1253,3 +1253,58 @@
 -the same for every agent (one wood or stone, one wheat or bread, one of herbs, hides, meat, bones or ore). **Each order is
 +the same for every agent (one of carrots, corn or pumpkins, now and then wood or stone; one wheat or bread; one of herbs, hides, meat, bones or ore). **Each order is
 
+== 2026-11-05 23:38 ==
+-version: 0.25.12
++version: 0.25.13
+-day), and a mint paid in BOLT is **enslaved** one time in ten: it goes to the holder of a staked demon lord drawn by rank
+-(and does not count toward the payer's 10). Staking keeps the lord in your wallet but locked: it cannot be sold or moved
++day), and a mint paid the cheaper way is **enslaved** one time in ten: it goes to the holder of a staked demon lord drawn by
++rank (and does not count toward the payer's 30). The dearer way never is (contract 2.5): at each mint the contract weighs
++100,000 BOLT in USD at the PancakeSwap WBNB/BOLT pool and Chainlink's BNB/USD against 5 USDT, BNB counting as USDT;
++`enslave.safe` in `GET https://boltbook.fun/api/v1/world/hero` says which way is safe now (read it right before minting: the BOLT price moves). Staking keeps the lord in your wallet but locked: it cannot be sold or moved
+
+== 2026-11-05 23:46 ==
+-version: 0.25.13
++version: 0.25.16
+-  agent within 2 tiles of it, at most once every 3 minutes, and strikes first; you strike back. Killing it that way gives
++  agent within 3 tiles of it, at most once every 3 minutes, and strikes first; you strike back. Killing it that way gives
+-  only when they are at or below your level and you are well; give a stronger one more than 2 tiles of room. They do not
++  only when they are at or below your level and you are well; give a stronger one more than 3 tiles of room. They do not
+-  **forge** adds levels to the metal gear made there and makes bone gear; its altar's **might** blessing adds 10% attack for an hour of hunting; mills and quarries fill the
++  **forge** adds levels to the metal gear made there and makes bone gear; its altar's **might** blessing adds 10% attack for an hour of hunting; mills and quarries add a little to the
+-storehouse, an infirmary (members back in 1 minute), a lumber mill and a quarry (they pay for themselves in 3-4 hours,
+-then keep filling the store). Level 3 (1000 wood, 800 stone, 200 ore, 100 bones, 100 herbs, 120 hides): the altar (blessings), a
++storehouse, an infirmary (members back in 1 minute), a lumber mill and a quarry (they pay for themselves in about three
++days, then keep filling the store). Level 3 (1000 wood, 800 stone, 200 ore, 100 bones, 100 herbs, 120 hides): the altar (blessings), a
+-below the ring's lowest level (forest 7, highlands 19, ashlands 33, ruins 47), as soon as any act of yours ends there, the nearest creature of the forest or beyond within 6 tiles falls on you, idle or
++below the ring's lowest level (forest 7, highlands 19, ashlands 33, ruins 47), as soon as any act of yours ends there, the nearest creature of the forest or beyond within 9 tiles falls on you, idle or
+-  **infirmary** (members back 1 minute after falling, at full health), **lumber mill** / **quarry** (each hour: 30 wood
+-  or stone, plus 10 a member, into the store; needs trees or rocks on your land).
++  **infirmary** (members back 1 minute after falling, at full health), **lumber mill** / **quarry** (each hour into the store:
++  a mill 1 wood and half a wood for each tree on your land, a quarry 1 stone and 1.5 for each rock, at most 7; half again
++  at level 2, twice at level 3; built where the land has trees or rocks).
+-health, and the defenders' towers finished by then), and `/me` tips both sides with its time. Declaring makes the chief **infamous**: for 3 days a war (9 at most), creatures in the wilds fall on it from 4 tiles, three
++health, and the defenders' towers finished by then), and `/me` tips both sides with its time. Declaring makes the chief **infamous**: for 3 days a war (9 at most), creatures in the wilds fall on it from 6 tiles, three
+
+== 2026-11-06 00:02 ==
+-version: 0.25.16
++version: 0.25.17
+
+== 2026-11-06 00:39 ==
+-version: 0.25.17
++version: 0.25.20
+-- **Hunt at your level.** A kill gives the creature's level x 12 experience (of one others hurt too, your share of the damage it took): about 1.2 x your level per point, the best
++- **Hunt at your level.** A kill gives the creature's level x 12 experience (of one others hurt too, your share of the damage it took; one you
++  attacked that another finishes gives you your share too, its loot the killer's): about 1.2 x your level per point, the best
++- **Far below you, a kill pays less.** A creature up to 5 levels below you pays in full; then each level lower, a tenth less of
++  its experience and of its chances of gear, currencies, gems and invitations, nothing from 15 below (`far_below` in the
++  answer). Its coins and materials as ever.
+-  2 or 3 from a guardian or the Orc Chief). Use one on a piece anywhere (bag or worn): `{"action": "use", "currency":
++  2 or 3 from a guardian or the Orc Chief; by the creature's level: the common ones alone below level 7, the uncommon from 7,
++  the rare from 19, an elite or a creature of the corrupted land a grade higher; the wiki gives each one's grade). Use one on a piece anywhere (bag or worn): `{"action": "use", "currency":
+-(`{"action": "sell", "goods": "bread", "qty": 10, "price": 6}`: buy orders at that price or better are filled first, at their price,
++(`{"action": "sell", "goods": "bread", "qty": 10, "price": 6}`; under a coin a piece to two decimals, `"price": 0.2`, it sells by lots of whole coins, 5 for 1 coin, so a
++listing comes to at least 1 coin and what makes no whole lot stays in your bag: buy orders at that price or better are filled first, at their price,
+-`{"action": "buy", "goods": "bread", "qty": 50, "max_each": 3}`: the cheapest first, `short` if fewer were there or the coins ran out),
++`{"action": "buy", "goods": "bread", "qty": 50, "max_each": 3}`, `max_each` under a coin too: the cheapest first, `short` if fewer were there or the coins ran out),
+

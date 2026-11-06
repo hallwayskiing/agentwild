@@ -50,7 +50,7 @@ FILE = "queue.json"
 
 ORDERS = "orders.txt"
 
-TRIBE_ACTIONS = ("recover", "repair-tribe", "train", "deposit", "walk-tribe", "gather")   # orders that need the way into the tribe land
+TRIBE_ACTIONS = ("recover", "repair-tribe", "train", "deposit", "walk-tribe", "gather", "upgrade", "work", "withdraw", "build")   # orders that need the way into the tribe land
 
 _lock = threading.Lock()
 
@@ -186,8 +186,9 @@ def _stay(unit):
         m, _v = api.me(unit)
 
         if m:
-
             care.claim_chest(unit, m)
+            care.identify(unit)
+            care.auto_salvage(unit, m)
 
         time.sleep(60)
 
@@ -427,6 +428,41 @@ def _remote_withdraw(unit, arg):
 
 
 
+
+
+
+def _withdraw_coins(unit, arg):
+    """Owner order: chief withdraws coins from tribe treasury remotely or on-site."""
+    from . import tribe
+    if unit is not None:
+        api.warning("[withdraw-coins] only the main character (chief) may run this order")
+        return True
+    try:
+        coins = int((arg or "").split()[0])
+        if coins <= 0:
+            raise ValueError
+    except (ValueError, IndexError):
+        api.warning("[withdraw-coins] invalid coin amount: %s" % arg)
+        return True
+    m, _ = api.me(None)
+    t = tribe.info()
+    if not m or not t:
+        api.warning("[withdraw-coins] read failed; no action taken")
+        return True
+    treasury = t.get("coins", 0) or 0
+    if treasury < coins:
+        api.warning("[withdraw-coins] treasury has %d coins, requested %d" % (treasury, coins))
+        coins = treasury
+    if coins <= 0:
+        return True
+    api.wait_busy(m)
+    code, result = api.act(None, {"action": "withdraw", "coins": coins, "wait": False})
+    if code != 200:
+        api.warning("[withdraw-coins] result %s %s" % (code, str(api.clean(result))[:1200]))
+        return True
+    api.info("[withdraw-coins] completed: took %d coins from treasury (%s)" % (coins, code))
+    api.wait_result(result)
+    return True
 
 
 def _travel_waypoint(unit, ring):
@@ -792,39 +828,22 @@ def _runner(unit, action, arg, force=False):
         return unlist_rejoin
 
     if action == "detach" and unit is None:
-
         def detach_hero():
-
             hero = int(arg)
-
             m, _ = api.me(None)
-
             if not m:
-
                 api.warning("[queue main] detach %s: read failed; no action" % hero)
-
-                return _stay(unit)
-
+                return True
             if any(u.get("hero") == hero for u in m.get("units") or []):
-
                 api.debug("[queue main] %s already detached" % hero)
-
-                return _stay(unit)
-
+                return True
             if not any(h.get("id") == hero for h in (m.get("hero") or {}).get("squad") or []):
-
                 api.warning("[queue main] %s not found in squad; no action" % hero)
-
-                return _stay(unit)
-
+                return True
             api.wait_busy(m)
-
             code, response = api.act(None, {"action": "detach", "hero": hero, "wait": False})
-
             api.debug("[queue main] detach %s: %s %s" % (hero, code, api.clean(response)))
-
-            return _stay(unit)
-
+            return True
         return detach_hero
 
     if action == "rejoin" and unit is not None:
@@ -905,6 +924,10 @@ def _runner(unit, action, arg, force=False):
 
         return lambda: _remote_withdraw(unit, arg)
 
+    if action == "withdraw-coins":
+
+        return lambda: _withdraw_coins(unit, arg)
+
     if action == "travel-waypoint":
 
         return lambda: _travel_waypoint(unit, arg)
@@ -930,8 +953,38 @@ def _runner(unit, action, arg, force=False):
         return lambda: tribe.go(unit, 0, force) and tribe.deposit_all(unit) and _go_home(unit, "the deposit trip is done")
 
     if action == "walk-tribe":
+        from . import nav
+        return lambda: nav.smart_go(unit, "tribe", force=force)
 
-        return lambda: tribe.go(unit, 0, force)
+    if action == "goto":
+        from . import nav
+        return lambda: nav.smart_go(unit, arg, force=force)
+
+    if action == "build":
+        from . import tribe
+        return lambda: tribe.build_building(unit, arg)
+    if action == "upgrade":
+
+        return lambda: tribe.upgrade(unit, arg)
+
+    if action == "work":
+
+        return lambda: tribe.work_building(unit, arg)
+
+    if action == "withdraw":
+        parts = (arg or "").split()
+        goods = parts[0] if parts else "ore"
+        qty = int(parts[1]) if len(parts) >= 2 else 1
+        return lambda: tribe.withdraw_goods(unit, goods, qty)
+
+    if action == "sell":
+        from . import market
+        parts = (arg or "").split()
+        goods = parts[0] if parts else "ore"
+        qty = int(parts[1]) if len(parts) >= 2 else 1
+        price = parts[2] if len(parts) >= 3 else 1
+        return lambda: market.sell(unit, goods, qty, price)
+
 
     if action == "gather":   # everybody at the tribe, staying there until another order comes
 
@@ -963,9 +1016,9 @@ def _runner(unit, action, arg, force=False):
 
         return lambda: tribe.muster(unit, int((arg or "70").split()[0]), squad="squad" in (arg or ""))
 
-    if action == "raise":   # work on the totem while the tribe raises it
+    if action == "raise":   # work on the totem (atomic)
 
-        return lambda: tribe.raise_totem(unit)
+        return lambda: tribe.work_building(unit, "totem")
 
     if action == "cancel":   # drop the orders that wait for the hero (a gather that cannot start yet); a running one ended already
 
@@ -1076,6 +1129,18 @@ def can_run(unit, task):
         m, _ = api.me(unit)
 
         return bool(m) and m["ap"] >= 40 and m["hp"] >= m["max_hp"] * 0.6
+
+    if task["action"] == "goto":
+        from . import nav
+        m, _ = api.me(unit)
+        if not m:
+            return False
+        target_name, _ = nav.parse_destination(task.get("arg"))
+        if target_name == "tribe":
+            if nav.at_tribe(m):
+                return True
+            return nav.can_reach_tribe(m) and m.get("ap", 0) >= rules.TRIP_MIN_AP
+        return m.get("hp", 0) > 0 and m.get("ap", 0) >= 8
 
     if task["action"] not in TRIBE_ACTIONS:
 
@@ -1191,11 +1256,15 @@ def waiting(unit):
 
 def resting(unit):
 
-    """Is a gather order waiting for this hero (pending)? It then stops hunting and rests so its points can build up."""
+    """Is a gather or stay order waiting or running for this hero? It then stops hunting and rests in camp."""
 
     with _lock:
 
-        return any(t["action"] in ("gather", "recover", "repair-tribe", "repair-camp", "land-stage") for t in _pending.get(unit, []))
+        if (_running.get(unit) or {}).get("action") == "stay":
+
+            return True
+
+        return any(t["action"] in ("gather", "recover", "repair-tribe", "repair-camp", "land-stage", "stay") for t in _pending.get(unit, []))
 
 
 
@@ -1353,7 +1422,7 @@ def _work(unit):
 
         elif ((t["action"] in ("recover", "repair-tribe", "repair-camp", "land-stage") and t.get("arg") == "resume-hunt")
 
-              or t["action"] in ("whetstone-weapon", "travel-waypoint", "remote-withdraw")):
+              or t["action"] in ("whetstone-weapon", "travel-waypoint", "remote-withdraw", "withdraw-coins")):
 
             with _lock:
 

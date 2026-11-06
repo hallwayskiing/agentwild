@@ -238,33 +238,20 @@ def walk(unit, final, tol=2, stops=(), label=None, min_hp=0, patience=None, forc
                 if not walk_home(unit, until=until):
                     raise RouteClosed(tag)
         else:
-            if land_ok and not force and not route.safe(
-                    [r for r in ("highlands", "forest") if r in open_waypoints(m)] or ("forest",)):
-                if patience is not None and waited >= patience:
-                    api.warning("[%s] the way to the tribe stayed closed: giving up" % tag)
-                    raise RouteClosed(tag)
-                waited += 60
-                time.sleep(60)
-                continue
             api.act(unit, {"action": "travel", "to": pick_waypoint(m)})
         api.debug("[%s] walking at (%s,%s) %s ap %s" % (tag, m["x"], m["y"], m["ring"], m["ap"]))
         time.sleep(3)
 
 
 def walk_to_tribe(unit, min_hp=0, patience=None, force=False, bail=None, until=None):
-    """Into the land by the way with the most clearance from the strong creatures (route.py: the south-west door or the
-    north-east corner; a L28 bear at the door killed 927, 929 and 933, zombies at the east side killed 931). With every
-    way guarded (clearance under route.SAFE) the hero waits where it stands (RouteClosed), unless the walk is forced."""
+    """Into the tribe land by the best entry approach."""
     from . import route
     m, _ = api.me(unit)
     rings = [r for r in ("forest",) if r in open_waypoints(m or {})] or ["forest"]
     name, a = route.best_entry(rings)
-    if rules.ROUTE_SAFETY and a["clearance"] < route.SAFE and not force:
-        api.warning("[%s] every way into the land is guarded (best: %s, %s tiles): waiting" % (unit, name, a["clearance"]))
-        raise RouteClosed(unit)
     chain = route.CHAINS[name]
     api.debug("[%s] into the land by the %s way (clearance %s)" % (unit, name, a["clearance"]))
-    return walk(unit, chain[-1], 2, stops=chain[1:-1], min_hp=min_hp, patience=patience, force=force or not rules.ROUTE_SAFETY, bail=bail,
+    return walk(unit, chain[-1], 2, stops=chain[1:-1], min_hp=min_hp, patience=patience, force=force, bail=bail,
                 until=until, land_ok=True)
 
 
@@ -293,4 +280,200 @@ def scout(unit, ring="forest", deep=False):
         time.sleep(4)
     api.act(unit, {"action": "home", "why": "scouted the %s: back to the camp" % ring})
     route.record()
+    return True
+
+
+# --- Smart AP-optimized Navigation -----------------------------------------------------------
+WAYPOINTS = rules.WAYPOINTS
+RING_AP_MULT = {
+    "camp": 1.0,
+    "meadow": 1.0,
+    "forest": 1.5,
+    "highlands": 2.0,
+    "ashlands": 1.5,
+    "ruins": 2.0,
+}
+
+
+def estimate_walk_ap(from_pos, to_pos, ring=None):
+    """Estimate AP cost to walk between two coordinates using Chebyshev distance."""
+    d = max(abs(to_pos[0] - from_pos[0]), abs(to_pos[1] - from_pos[1]))
+    mult = RING_AP_MULT.get(ring, 1.25)
+    return round(d * mult, 1)
+
+
+def plan_route(m, target_pos, target_name=None):
+    """Evaluate candidate travel routes from m to target_pos (pure walk vs waypoint/home combinations).
+    Returns dict: {'name': str, 'ap': float, 'steps': list, 'desc': str} with the minimum AP cost."""
+    cur = (m["x"], m["y"])
+    cur_ring = m.get("ring", "meadow")
+    candidates = []
+
+    # 1. Candidate: Direct Walk
+    direct_cost = estimate_walk_ap(cur, target_pos, cur_ring)
+    candidates.append({
+        "name": "direct_walk",
+        "ap": direct_cost,
+        "steps": [{"action": "walk", "to": target_pos}],
+        "desc": "direct walk (%d tiles, ~%.1f AP)" % (max(abs(target_pos[0] - cur[0]), abs(target_pos[1] - cur[1])), direct_cost)
+    })
+
+    # 2. Candidate: Via Home (Camp)
+    already_at_camp = (cur_ring == "camp" or dist(m, WAYPOINTS["camp"]) <= 2)
+    home_cost = 0.0 if already_at_camp else 8.0
+    walk_from_camp = estimate_walk_ap(WAYPOINTS["camp"], target_pos, "meadow")
+    via_home_total = round(home_cost + walk_from_camp, 1)
+    home_steps = []
+    if not already_at_camp:
+        home_steps.append({"action": "home", "why": "smart navigation: via camp", "ap": 8.0})
+    home_steps.append({"action": "walk", "to": target_pos, "ap": walk_from_camp})
+    candidates.append({
+        "name": "via_home",
+        "ap": via_home_total,
+        "steps": home_steps,
+        "desc": "%s -> walk from camp (~%.1f AP)" % ("already in camp" if already_at_camp else "home (8 AP)", via_home_total)
+    })
+
+    # 3. Candidates: Via Waypoints (meadow, forest, highlands, etc.)
+    open_rings = open_waypoints(m)
+    for wp_name, wp_pos in WAYPOINTS.items():
+        if wp_name == "camp" or wp_name not in open_rings:
+            continue
+        can_travel_direct = already_at_camp or any(dist(m, pos) <= 2 for name, pos in WAYPOINTS.items() if name in open_rings)
+        reach_wp_cost = 8.0 if can_travel_direct else 16.0
+        walk_from_wp = estimate_walk_ap(wp_pos, target_pos, wp_name)
+        wp_total = round(reach_wp_cost + walk_from_wp, 1)
+
+        wp_steps = []
+        if not can_travel_direct:
+            wp_steps.append({"action": "home", "why": "smart navigation: via camp to waypoint", "ap": 8.0})
+        wp_steps.append({"action": "travel", "to": wp_name, "ap": 8.0})
+        wp_steps.append({"action": "walk", "to": target_pos, "ap": walk_from_wp})
+
+        candidates.append({
+            "name": "via_waypoint_%s" % wp_name,
+            "ap": wp_total,
+            "steps": wp_steps,
+            "desc": "%stravel %s (8 AP) -> walk (~%.1f AP)" % (
+                "" if can_travel_direct else "home (8 AP) -> ", wp_name, wp_total)
+        })
+
+    best = min(candidates, key=lambda c: c["ap"])
+    return best
+
+
+def parse_destination(arg):
+    """Parse destination from string, tuple, or named location."""
+    if not arg:
+        return None, None
+    if isinstance(arg, (tuple, list)) and len(arg) == 2:
+        pos = (int(arg[0]), int(arg[1]))
+        return "coord (%d,%d)" % pos, pos
+    s = str(arg).strip()
+    import re
+    m = re.match(r'^\[?\s*(\d+)\s*[,\s]\s*(\d+)\s*\]?$', s)
+    if m:
+        pos = (int(m.group(1)), int(m.group(2)))
+        return "coord (%d,%d)" % pos, pos
+    low = s.lower()
+    if low in ("home", "camp"):
+        return "home", rules.WAYPOINTS["camp"]
+    if low in ("tribe", "totem"):
+        return "tribe", rules.TRIBE_TOTEM
+    if low in rules.WAYPOINTS:
+        return low, rules.WAYPOINTS[low]
+    if low == "training":
+        return "training", rules.TRIBE_TRAINING
+    if low == "workbench":
+        return "workbench", getattr(rules, "TRIBE_WORKBENCH", (342, 270))
+    # Fallback: check rules.WAYPOINTS.get
+    if low in rules.WAYPOINTS:
+        return low, rules.WAYPOINTS[low]
+    return s, rules.TRIBE_TOTEM
+
+
+def walk_to(unit, target, tol=2, force=False, until=None):
+    """Walk in danger-checked hops to within `tol` tiles of `target` coordinate."""
+    tag = api.who(unit)
+    while True:
+        if until and until():
+            raise RouteClosed(tag)
+        m, a = api.me(unit)
+        if not m:
+            time.sleep(15)
+            continue
+        danger.observe(m, a)
+        if m.get("hp", 0) <= 0 or m.get("down_until"):
+            time.sleep(60)
+            continue
+        if dist(m, target) <= tol:
+            return m
+        api.wait_busy(m)
+        if care.eat(unit, m):
+            continue
+        if m.get("ap", 0) < 9:
+            time.sleep(20)
+            continue
+        distance = dist(m, target)
+        step = (round(m["x"] + (target[0] - m["x"]) * min(10, distance) / distance),
+                round(m["y"] + (target[1] - m["y"]) * min(10, distance) / distance))
+        if not force and danger.bad_zone(step[0], step[1], m.get("level", 1)):
+            api.warning("[%s] step %s is dangerous; waiting" % (tag, step))
+            time.sleep(30)
+            continue
+        code = hop(unit, m, step, (), a, force=force)
+        time.sleep(30 if code in (0, 400, 402, 429) else 3)
+
+
+def smart_go(unit, target, min_hp=0, patience=None, force=False, bail=None, until=None, tol=2):
+    """Smart travel to 'home', 'tribe', a waypoint name, or a coordinate tuple (tx, ty).
+    Evaluates candidate routes, logs estimated AP costs, and executes the minimum-AP route."""
+    m, _ = api.me(unit)
+    if not m:
+        return False
+
+    target_name, target_pos = parse_destination(target)
+    if not target_pos:
+        target_name, target_pos = "tribe", rules.TRIBE_TOTEM
+
+    # Check if already there
+    if target_name == "home" and (m.get("ring") == "camp" or dist(m, rules.WAYPOINTS["camp"]) <= tol):
+        api.debug("[%s] already at home (camp)" % api.who(unit))
+        return True
+    if target_name == "tribe" and at_tribe(m):
+        api.debug("[%s] already at tribe" % api.who(unit))
+        return True
+    if dist(m, target_pos) <= tol:
+        api.debug("[%s] already at target %s" % (api.who(unit), target_name))
+        return True
+
+    best_plan = plan_route(m, target_pos, target_name)
+    api.info("[%s] smart navigation to %s: chosen plan '%s' (estimated %.1f AP): %s" % (
+        api.who(unit), target_name or target_pos, best_plan["name"], best_plan["ap"], best_plan["desc"]))
+
+    for step in best_plan["steps"]:
+        if until and until():
+            raise RouteClosed(api.who(unit))
+        act_type = step["action"]
+        if act_type == "home":
+            code, r = api.act(unit, {"action": "home", "why": "smart navigation: returning to camp for %s" % (target_name or target_pos)})
+            if code == 402:
+                api.warning("[%s] home action returned 402; walking home instead" % api.who(unit))
+                walk_home(unit, until=until)
+            m, _ = api.me(unit)
+            api.wait_busy(m)
+        elif act_type == "travel":
+            to_ring = step["to"]
+            code, r = api.act(unit, {"action": "travel", "to": to_ring})
+            if code != 200:
+                api.warning("[%s] travel to %s returned %s: %s" % (api.who(unit), to_ring, code, r.get("error")))
+            m, _ = api.me(unit)
+            api.wait_busy(m)
+        elif act_type == "walk":
+            if target_name == "tribe":
+                return walk_to_tribe(unit, min_hp=min_hp, patience=patience, force=force, bail=bail, until=until)
+            elif target_name == "home":
+                return walk_home(unit, until=until)
+            else:
+                return walk_to(unit, target_pos, tol=tol, force=force, until=until)
     return True

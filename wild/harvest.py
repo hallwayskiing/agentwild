@@ -215,13 +215,30 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
                 api.act(unit, {"action": "home", "why": "the %s node lies in the %s, not for this hero" % (resource, node.get("ring"))})   # (934 waited in the highlands)
             time.sleep(120)
             continue
-        if node and m["ap"] < 1.4 * node.get("dist", 0) + AP_MIN:   # the walk there, the swings and the way home
-            say("%d points are too few for the %s node %s tiles away: resting" % (m["ap"], resource, node.get("dist")))
-            time.sleep(60)
-            continue
+        if node:
+            dest = (node["x"], node["y"])
+            route_plan = nav.plan_route(m, dest)
+            needed_ap = route_plan["ap"] + AP_MIN
+            if m["ap"] < needed_ap:
+                say("%d points are too few for the %s node %s tiles away (plan '%s' needs ~%.1f AP): resting" % (
+                    m["ap"], resource, node.get("dist"), route_plan["name"], needed_ap))
+                time.sleep(60)
+                continue
         if node and node.get("dist", 0) > 1:
-            # steer to OUR node, whatever ring it lies in: `gather` goes to the nearest node of the kind, and the lord, standing beside
-            # iron veins in the ashlands, got iron ore instead of the copper node 10 tiles away (the owner: find the real copper)
+            # If route plan has travel or home steps, execute via smart navigation
+            if route_plan.get("steps") and any(s.get("action") in ("travel", "home") for s in route_plan["steps"]):
+                step0 = route_plan["steps"][0]
+                if step0.get("action") == "home":
+                    api.act(unit, {"action": "home", "why": "smart navigation: via camp to %s node" % resource})
+                    time.sleep(5)
+                    continue
+                elif step0.get("action") == "travel":
+                    target_ring = step0.get("to")
+                    code, r = api.act(unit, {"action": "travel", "to": target_ring})
+                    _log(unit, "smart navigation: uses %s waypoint towards %s node (%s,%s): %s" % (
+                        target_ring, resource, node["x"], node["y"], code))
+                    time.sleep(5)
+                    continue
             code0, r0 = api.act(unit, {"action": "move", "to": [node["x"], node["y"]], "until_there": True})
             if code0 == 400 and r0.get("closest"):   # out of one walk: the nearest tile the search reaches
                 code0, r0 = api.act(unit, {"action": "move", "to": r0["closest"], "until_there": True})
@@ -368,14 +385,22 @@ def run(unit, own):
 
                 tx, ty = ORE_NODE["xy"]   # (not while it has given that spot up)
                 far = max(abs(m["x"] - tx), abs(m["y"] - ty))
-                camp_far = max(abs(CAMP[0] - tx), abs(CAMP[1] - ty))
-                if far > camp_far + 20 and m["ring"] != "camp" and m["ap"] >= 8:
-                    # `home` costs 8 points whatever the distance: far from the copper, the way via the camp is shorter in points
-                    api.act(unit, {"action": "home", "why": "the copper node (%s,%s) is %d tiles away, %d from the camp: home (8 points) first" % (tx, ty, far, camp_far)})
-                    time.sleep(25)
-                    continue
                 if far > 3:
                     state.target(unit, tx, ty, "集合点铜矿")
+                    plan = nav.plan_route(m, (tx, ty))
+                    if plan.get("steps") and any(s.get("action") in ("travel", "home") for s in plan["steps"]):
+                        step0 = plan["steps"][0]
+                        if step0.get("action") == "home":
+                            api.act(unit, {"action": "home", "why": "smart navigation: via camp to copper (%s,%s)" % (tx, ty)})
+                            time.sleep(10)
+                            continue
+                        elif step0.get("action") == "travel":
+                            target_ring = step0.get("to")
+                            code, r = api.act(unit, {"action": "travel", "to": target_ring})
+                            _log(unit, "smart navigation: uses %s waypoint towards copper (%s,%s): %s" % (
+                                target_ring, tx, ty, code))
+                            time.sleep(10)
+                            continue
                     code, r = api.act(unit, {"action": "move", "to": [tx, ty], "until_there": True})
                     if code == 400 and r.get("closest"):
                         code, r = api.act(unit, {"action": "move", "to": r["closest"], "until_there": True})

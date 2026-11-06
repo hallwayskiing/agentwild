@@ -111,93 +111,16 @@ LORD = 928                       # the staked demon lord
 
 
 SQUADS = {
-
-
-
-
-
-
-
-    "ember": {"zh": "Ember", "members": [], "hero_goal": 15, "rings": ("forest",), "region": "eastS", "center": (378, 256),
-
-
-
-
-
-
-
+    "astral": {"zh": "Astral", "members": [None], "hero_goal": 99, "rings": ("forest",), "region": "westN", "center": (180, 192),
                "elites": True, "bounties": True, "bread": True, "bandage": True},
-
-
-
-
-
-
-
-    "solstice": {"zh": "Solstice", "members": [None], "hero_goal": 15, "rings": ("forest",), "region": "westS", "center": (180, 320),
-
-
-
-
-
-
-
-                "bread": True, "bandage": True},
-
-
-
-
-
-
-
-    "silverwing": {"zh": "Silverwing", "members": [925, 933, 930, 932], "hero_goal": 15, "rings": ("forest",), "region": "eastN", "center": (344, 192),
-
-
-
-
-
-
-
-                "bread": True},
-
-
-
-
-
-
-
-    "nightjar": {"zh": "Nightjar", "members": [927, 929, 931, 934], "hero_goal": 15, "rings": ("forest",), "region": "eastS", "center": (344, 320),
-
-
-
-
-
-
-
-                "bread": True},
-
-
-
-
-
-
-
-    "astral": {"zh": "Astral", "members": [None, 928], "hero_goal": 99, "rings": ("meadow", "forest"), "region": "land",
-
-
-
-
-
-
-
-                "elites": True, "bounties": True, "bread": True, "land": True, "bandage": True},
-
-
-
-
-
-
-
+    "ember": {"zh": "Ember", "members": [928], "hero_goal": 99, "rings": ("highlands",), "region": "eastN", "center": (410, 220),
+              "elites": True, "bounties": True, "bread": True, "bandage": True},
+    "silverwing": {"zh": "Silverwing", "members": [925, 932, 934], "hero_goal": 15, "rings": ("forest",), "region": "eastS", "center": (344, 320),
+                   "bread": True, "bandage": True},
+    "nightjar": {"zh": "Nightjar", "members": [929, 930, 933], "hero_goal": 15, "rings": ("forest",), "region": "westS", "center": (180, 320),
+                 "bread": True, "bandage": True},
+    "solstice": {"zh": "Solstice", "members": [927, 931], "hero_goal": 15, "rings": ("forest",), "region": "east", "center": (378, 256),
+                 "bread": True, "bandage": True},
 }
 
 
@@ -207,6 +130,14 @@ SQUADS = {
 
 
 MAP_CAMP = (256, 256)
+WAYPOINTS = {
+    "camp": (256, 256),
+    "meadow": (307, 256),
+    "forest": (356, 256),
+    "highlands": (410, 256),
+    "ashlands": (458, 256),
+    "ruins": (494, 256),
+}
 
 
 
@@ -222,7 +153,7 @@ REGION_SPLIT_X = 256
 
 
 
-AUTO_HUNT = False                # hunting requires an explicit persistent `hunt` order
+AUTO_HUNT = True                 # squads hunt automatically whenever free
 
 
 
@@ -305,7 +236,7 @@ CORRUPT_LAND = {"period": 7200,          # a land starts every 2 hours ...
 
 
 
-                "rings": ("meadow", "forest"),   # worth going when it opens in meadow or forest ...
+                "rings": ("meadow", "forest", "highlands"),   # worth going when it opens in meadow, forest, or highlands ...
 
 
 
@@ -313,7 +244,7 @@ CORRUPT_LAND = {"period": 7200,          # a land starts every 2 hours ...
 
 
 
-                "max_level": 12,        # ... with maximum creature level up to 12
+                "max_level": 18,        # (the owner, 2026-11-06): 18级以下的腐化区域都去
 
 
 
@@ -370,6 +301,7 @@ CORRUPT_LAND = {"period": 7200,          # a land starts every 2 hours ...
 
 
 LEVEL_SPAN = 3                   # targets up to the finisher's level +3 ...
+MAX_LEVEL_DIFF = 5               # never attack or retaliate against a creature >5 levels below us (the owner, 2026-11-06)
 
 
 
@@ -433,7 +365,7 @@ AGGRO_RANGE = 3                  # a strong creature (4+ levels above the walker
 
 
 
-ROUTE_SAFETY = False             # owner: do not block or detour the tribe route for nearby creatures
+
 
 
 
@@ -580,7 +512,7 @@ TRIBE_WAYPOINT = (356, 256)      # forest waypoint on the 512-tile map
 
 
 
-STORE_KINDS = ("wood", "stone", "ore", "copper_ore", "iron_ore", "hide", "bone", "herb", "wheat_seed", "whetstone", "plating")
+STORE_KINDS = ("wood", "stone", "ore", "copper_ore", "iron_ore", "hide", "bone", "herb", "wheat_seed", "whetstone", "plating", "crystal")
 
 
 
@@ -1101,7 +1033,7 @@ def describe():
 
 
 
-        "【打怪】目标等级 ≤ 收尾者等级+%d，且 ≥ %d 级；等级低的先收尾；没目标就往中心点走" % (LEVEL_SPAN, LEVEL_MIN),
+        "【打怪】取消补刀机制，参战队友倾向于等额伤害平分经验；不攻击低于多于%d级的怪；目标等级 ≤ 队伍等级+%d，且 ≥ %d 级；没目标就往中心点走" % (MAX_LEVEL_DIFF, LEVEL_SPAN, LEVEL_MIN),
 
 
 
@@ -1117,7 +1049,7 @@ def describe():
 
 
 
-            "草甸" if CORRUPT_LAND["ring"] == "meadow" else CORRUPT_LAND["ring"], *CORRUPT_LAND["levels"], CORRUPT_LAND["stage"] // 60),
+            "草甸/森林/高地", 1, CORRUPT_LAND.get("max_level", 18), CORRUPT_LAND.get("stage", 900) // 60),
 
 
 
@@ -1125,7 +1057,7 @@ def describe():
 
 
 
-        "【高级怪】主动攻击范围按 %d 格算，普通寻路保持 %d 格以上距离；部落路线安全阻拦%s；被伏击：打得过就还击，打不过回营地" % (AGGRO_RANGE, AGGRO_RANGE + 1, "开启" if ROUTE_SAFETY else "关闭"),
+        "【高级怪】主动攻击范围按 %d 格算，普通寻路保持 %d 格以上距离；被伏击：打得过就还击（不还击低 >%d 级的怪），打不过回营地" % (AGGRO_RANGE, AGGRO_RANGE + 1, MAX_LEVEL_DIFF),
 
 
 
@@ -1149,7 +1081,7 @@ def describe():
 
 
 
-        "【回部落】经森林路点步行，只在路线安全、有路点、行动点≥%d 时出发；恢复命令执行不了时在营地等待；"
+        "【回部落】经森林路点直接步行，有路点、行动点≥%d 时出发；"
 
 
 
@@ -1157,7 +1089,7 @@ def describe():
 
 
 
-        "强制命令（orders.txt 里写 force，如 `0 force home`）立刻执行，不管路是否关闭、有没有强怪，排在该英雄所有任务前面" % TRIP_MIN_AP,
+        "强制命令（orders.txt 里写 force，如 `0 force home`）排在该英雄所有任务前面立刻执行" % TRIP_MIN_AP,
 
 
 

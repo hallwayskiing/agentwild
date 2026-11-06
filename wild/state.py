@@ -22,6 +22,7 @@ try:   # the last snapshot comes back with the process: the dashboard is not emp
         _old = json.load(_f)
     _heroes.update(_old.get("heroes") or {})
     _heroes.pop("513", None)
+    _heroes.pop("926", None)
     _meta.update(_old.get("meta") or {})
 except (OSError, ValueError):
     pass
@@ -64,6 +65,12 @@ def _write():
         return
     _last[0] = time.time()
     _heroes.pop("513", None)
+    _heroes.pop("926", None)
+    from . import rules
+    valid = {str(u or 0) for sq in rules.SQUADS.values() for u in sq["members"]}
+    for k in list(_heroes.keys()):
+        if k not in valid:
+            _heroes.pop(k, None)
     data = {"heroes": _heroes, "meta": _meta, "notes": {str(k): v for k, v in _notes.items()}, "at": time.time()}
     tmp = PATH + ".tmp"
     try:

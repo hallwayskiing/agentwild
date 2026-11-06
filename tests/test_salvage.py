@@ -93,5 +93,32 @@ class AutoSalvageCandidateTests(unittest.TestCase):
         self.assertEqual(cand_ids, [51, 52, 56])
 
 
+    def test_does_not_salvage_upgrades_or_empty_slot_gear(self):
+        # 1. Weapon slot is empty in worn: the best weapon in bag (L5 maul) MUST be preserved!
+        # 2. Chest slot is worn (L2 chest, armor 10): bag has L6 chest (armor 25, upgrade) and L1 chest (armor 5, worse).
+        #    The L6 chest MUST be preserved; the L1 chest CAN be salvaged!
+        m = {
+            "worn": {
+                "chest": {"id": 101, "slot": "chest", "rarity": "plain", "level": 2, "armor": 10, "durability": 50, "durability_max": 50},
+                "weapon": None,
+            },
+            "gear_bag": [
+                {"id": 201, "slot": "weapon", "base": "maul", "rarity": "plain", "level": 5, "damage": 20, "durability": 50, "durability_max": 50},
+                {"id": 202, "slot": "weapon", "base": "blade", "rarity": "plain", "level": 1, "damage": 5, "durability": 50, "durability_max": 50},
+                {"id": 203, "slot": "chest", "base": "cuirass", "rarity": "plain", "level": 6, "armor": 25, "durability": 50, "durability_max": 50},
+                {"id": 204, "slot": "chest", "base": "tunic", "rarity": "plain", "level": 1, "armor": 5, "durability": 50, "durability_max": 50},
+            ]
+        }
+        cands = care.plain_salvage_candidates(m)
+        cand_ids = sorted([c["id"] for c in cands])
+        # 201 (best weapon for empty slot) must be preserved -> not in cands
+        # 203 (L6 chest upgrade over worn L2) must be preserved -> not in cands
+        # 202 (weaker weapon for empty slot) and 204 (worse chest than worn) are candidates
+        self.assertNotIn(201, cand_ids)
+        self.assertNotIn(203, cand_ids)
+        self.assertIn(202, cand_ids)
+        self.assertIn(204, cand_ids)
+
+
 if __name__ == "__main__":
     unittest.main()

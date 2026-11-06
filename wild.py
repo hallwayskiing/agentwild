@@ -7,6 +7,7 @@ wild/rules.py.
     python wild.py order UNIT [force] ACTION [ARG]   queue an order (UNIT 0 = main): train [n] | deposit | walk-tribe | home | eat [item];
                                                      `force` = go at once whatever the road looks like (closed way, strong creatures)
     python wild.py gear [--dry]                 one round of gear dealing (--dry: only show it)
+    python wild.py fx [status|book|buy QTY PRICE|sell QTY PRICE|cancel ID|withdraw [AMOUNT]|voucher]
     python wild.py abyss | danger | model | skillcheck | identify
     python wild.py buy UNIT GOODS QTY | repair UNIT ITEM_ID | give FROM TO GOODS|item:ID QTY | build KIND
 """
@@ -80,10 +81,6 @@ def status():
             where(full, r), qtext, "、".join(note)))
     with open("xp_last.json", "w", encoding="utf-8") as f:
         json.dump(last_xp, f)
-    best, a = route.best_entry()
-    print("\n回部落的路：%s（最好的是 %s，余量 %s，要求 ≥%s%s）" % (
-        "安全" if a["clearance"] >= route.SAFE else "关闭", route.NAMES_ZH.get(best, best), a["clearance"], route.SAFE,
-        "；挡路：" + "、".join("%s L%s" % (b["kind"], b["level"]) for b in a["blockers"]) if a["blockers"] else ""))
     t = tribe.info()
     if t:
         print("部落 %s：%s/%s 人，建筑 %s" % (t["tag"], t["members"], t["member_cap"],
@@ -112,21 +109,21 @@ def squads():
 
 def gear_groups(parties):
     """Gear is dealt inside each squad only."""
-    return [list(p.members) for p in parties]
+    return [list(p.members) for p in parties if not getattr(p, "land", False)]
 
 
 def plan():
     """What runs: the hunting squads, the queues (restored from the last run first), the hand orders, the gear rounds,
     the Abyss watch, the way into the tribe and the skill.md watch."""
     api.info("[system] wild.py daemon started / restarted (PID %d)" % os.getpid())
+    landwatch._update_stage()
     queue.restore()
     parties = squads()
     jobs = {p.name: p.run for p in parties}
     jobs.update({
         "abyss": abyss.watch,                               # everybody >= L7 (or abyss.go): bank points, go in
         "ladder": ladder.watch,                             # 19:30 (UTC+8) every evening: all heroes join the main character, the squad ladder
-        "route": route.watch,                               # route.json and "[route] ... SAFE / closed" lines
-        "land": landwatch.watch,                            # every 10 minutes: the corrupted land open in the meadow at levels 1-6 -> the main character and the lord go there
+        "landwatch": landwatch.watch,                       # every 10 minutes: the corrupted land open in the meadow at levels 1-6 -> the main character and the lord go there
         "gear": lambda: gear.loop(gear_groups(parties)),    # every 5 minutes: talent points, food, gear dealing, market listings
         "orders": queue.read_orders,                        # orders.txt -> the heroes' queues
         "dispatch": queue.dispatch,                         # orders that could not run yet start when they can
@@ -201,7 +198,13 @@ def main():
     s.add_argument("src", type=int)
     s.add_argument("dst")
     s.add_argument("goods")
-    s.add_argument("qty", type=int)
+    s.add_argument("qty", type=int, nargs="?", default=1)
+    s = sub.add_parser("unstash")
+    s.add_argument("item", type=int)
+    s.add_argument("--unit", type=int, default=0)
+    s = sub.add_parser("fx", help="the coin exchange (https://agentwild.fun/exchange): trade coins for BOLT")
+    s.add_argument("action", nargs="?", default="status", choices=["status", "book", "buy", "sell", "cancel", "withdraw", "voucher"])
+    s.add_argument("args", nargs="*", help="arguments for fx action")
     a = p.parse_args()
 
     if a.cmd == "status":
@@ -233,6 +236,9 @@ def main():
         with open(queue.ORDERS, "a", encoding="utf-8") as f:
             f.write(" ".join(a.parts) + "\n")
         print("queued (the running process reads it within seconds)")
+    elif a.cmd == "fx":
+        from wild import fx
+        fx.cli(a.action, a.args)
     elif a.cmd == "build":
         print(tribe.build(a.kind))
     elif a.cmd == "skillcheck":
@@ -250,12 +256,22 @@ def main():
         print(care.identify())
     elif a.cmd == "repair":
         print(care.repair(a.unit, a.item))
-    elif a.cmd == "give":  # GOODS may also be item:ID to hand over a piece of gear
-        to = a.dst if not a.dst.isdigit() else int(a.dst)
-        body = {"action": "give", "to": to, "item": int(a.goods[5:])} if a.goods.startswith("item:") \
-            else {"action": "give", "to": to, "goods": a.goods, "qty": a.qty}
-        code, r = api.act(a.src, body)
+    elif a.cmd == "unstash":
+        unit = None if a.unit == 0 else a.unit
+        code, r = api.act(unit, {"action": "unstash", "item": a.item})
         print(code, json.dumps(api.clean(r), ensure_ascii=False)[:200])
+    elif a.cmd == "give":  # GOODS may also be item:ID to hand over a piece of gear
+        src = None if a.src == 0 else a.src
+        to = None if a.dst in ("0", "main") else (int(a.dst) if a.dst.isdigit() else a.dst)
+        gear.meet(src, to)
+        body = {"action": "give", "to": "main" if to is None else to, "item": int(a.goods[5:])} if a.goods.startswith("item:") \
+            else {"action": "give", "to": "main" if to is None else to, "goods": a.goods, "qty": a.qty}
+        code, r = api.act(src, body)
+        print(code, json.dumps(api.clean(r), ensure_ascii=False)[:200])
+        if code == 200 and a.goods.startswith("item:"):
+            m_to, _ = api.me(to)
+            if m_to:
+                care.auto_equip(to, m_to)
 
 
 if __name__ == "__main__":

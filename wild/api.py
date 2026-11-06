@@ -203,6 +203,8 @@ def act(unit, payload):
                 info(msg)
             elif "ambush" in w_lower or "hurt" in w_lower or "danger" in w_lower or "broken" in w_lower:
                 warning(msg)
+            elif "smart navigation" in w_lower:
+                debug(msg)
             else:
                 info(msg)
     if payload.get("action") == "attack":
@@ -218,7 +220,10 @@ def after_attack(m, r):
     me = (r or {}).get("me") or {}
     if me.get("hp") is None:
         return None
-    return dict(m, hp=me["hp"], ap=me.get("ap", m.get("ap"))), (me.get("ready_in_seconds") or 0) + 0.5
+    sec = me.get("ready_in_seconds") or (r or {}).get("ready_in_seconds") or 0
+    busy = iso_wait(me.get("busy_until") or (r or {}).get("busy_until"))
+    wait_time = max(sec, busy) + 0.5
+    return dict(m, hp=me["hp"], ap=me.get("ap", m.get("ap"))), wait_time
 
 
 def wait_busy(m):

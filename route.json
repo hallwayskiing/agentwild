@@ -20,10 +20,10 @@
   ]
  },
  "safe_clearance": 4,
- "updated": "2026-11-05 22:22:29",
+ "updated": "2026-11-06 16:38:54",
  "assessment": {
   "forest": {
-   "clearance": 7.0,
+   "clearance": 15.0,
    "blockers": []
   }
  },
@@ -31,362 +31,362 @@
  "safe_now": true,
  "history": [
   {
-   "t": "2026-11-05 13:54:38",
+   "t": "2026-11-06 09:19:00",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 09:29:01",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 09:30:06",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 09:38:27",
+   "unit": null,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 09:59:15",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 09:59:21",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 10:01:04",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 10:01:56",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 10:03:20",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 10:12:20",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 10:16:12",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 10:19:43",
    "unit": 934,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 13:54:41",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 13:54:42",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 13:54:43",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 13:54:52",
+   "t": "2026-11-06 11:21:52",
    "unit": 930,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 13:55:21",
-   "unit": 933,
+   "t": "2026-11-06 11:25:09",
+   "unit": 927,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 13:57:23",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "fell"
-  },
-  {
-   "t": "2026-11-05 13:59:43",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 14:06:22",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 14:09:50",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 14:14:38",
+   "t": "2026-11-06 11:35:36",
    "unit": 932,
    "entry": "forest",
-   "outcome": "fell"
+   "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 14:14:45",
+   "t": "2026-11-06 11:50:50",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 12:03:46",
    "unit": 934,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 14:15:27",
+   "t": "2026-11-06 12:18:03",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 12:20:53",
    "unit": 927,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 14:16:25",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 15:48:21",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 15:48:35",
+   "t": "2026-11-06 12:24:39",
    "unit": 931,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 15:48:40",
+   "t": "2026-11-06 12:36:20",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 12:45:10",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 12:55:00",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 12:56:30",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 13:00:28",
    "unit": 934,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 15:48:43",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 15:48:49",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 15:48:56",
+   "t": "2026-11-06 13:04:35",
    "unit": 929,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 15:51:35",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 15:53:41",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 15:58:27",
-   "unit": 933,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:00:39",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:03:50",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:03:53",
-   "unit": 928,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:12:23",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:12:33",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:20:53",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:21:27",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:26:48",
+   "t": "2026-11-06 13:10:14",
    "unit": 931,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 16:34:56",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:47:25",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:48:56",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 16:50:12",
+   "t": "2026-11-06 13:20:43",
    "unit": 930,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 16:55:31",
-   "unit": 933,
+   "t": "2026-11-06 13:21:40",
+   "unit": 925,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 17:13:07",
-   "unit": 932,
+   "t": "2026-11-06 13:25:59",
+   "unit": 931,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 17:27:18",
+   "t": "2026-11-06 13:36:48",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 13:47:34",
+   "unit": null,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 13:56:03",
    "unit": 934,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 17:34:19",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 17:47:55",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 17:58:37",
-   "unit": 933,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 17:59:27",
+   "t": "2026-11-06 13:57:19",
    "unit": 927,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 18:17:43",
+   "t": "2026-11-06 13:59:44",
    "unit": 930,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 18:28:40",
-   "unit": 925,
+   "t": "2026-11-06 14:02:15",
+   "unit": 931,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 18:35:52",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 18:49:22",
+   "t": "2026-11-06 14:18:16",
    "unit": 932,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 19:09:28",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 19:12:02",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 19:21:17",
+   "t": "2026-11-06 14:24:03",
    "unit": null,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 20:12:58",
+   "t": "2026-11-06 14:27:30",
    "unit": 925,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 20:22:27",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 20:26:25",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 20:39:41",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 20:42:08",
-   "unit": 933,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 21:04:41",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-05 21:05:04",
+   "t": "2026-11-06 14:31:17",
    "unit": 929,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 21:20:21",
-   "unit": 925,
+   "t": "2026-11-06 14:40:21",
+   "unit": 934,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 21:23:55",
+   "t": "2026-11-06 14:41:57",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 14:47:21",
    "unit": 931,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 22:03:39",
+   "t": "2026-11-06 14:56:34",
    "unit": 930,
    "entry": "forest",
    "outcome": "arrived"
   },
   {
-   "t": "2026-11-05 22:16:46",
+   "t": "2026-11-06 14:57:49",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:06:41",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:09:13",
    "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:11:16",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:28:36",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:45:34",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:54:09",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 15:55:06",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:00:57",
+   "unit": 934,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:06:41",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:07:59",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:09:17",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:11:37",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:33:36",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:33:43",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:38:54",
+   "unit": 934,
    "entry": "forest",
    "outcome": "arrived"
   }

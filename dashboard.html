@@ -106,8 +106,8 @@ async function tick(){
   SQ=s.squads||{};
   document.getElementById('rows').innerHTML=s.heroes.map(h=>row(h,now)).join('');
   feed(s.log);
-  document.getElementById('dot').className='dot';document.getElementById('t').textContent='实时 · '+new Date().toLocaleTimeString();
+  document.getElementById('dot').className='dot';document.getElementById('t').textContent='实时 (2秒更新) · '+new Date().toLocaleTimeString();
  }catch(e){document.getElementById('dot').className='dot bad';document.getElementById('t').textContent='断开 '+e}
 }
-tick();setInterval(tick,15000);
+tick();setInterval(tick,2000);
 </script></html>

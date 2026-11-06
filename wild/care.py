@@ -320,26 +320,36 @@ def auto_equip(unit, m):
                 return
 
 
-def identify():
-    """Identify the main character's eligible pieces individually, respecting the level and coin reserve."""
-    m, _ = api.me(None)
+def identify(unit=None):
+    """Identify pieces individually, respecting the level and coin reserve. Level limit applies only to treasured gear."""
+    m, _ = api.me(unit)
     if not m:
         return 0, []
     identified = []
     code = 200
     for g in m.get("gear_bag") or []:
+        if not g.get("unidentified"):
+            continue
         level = g.get("level", 0)
-        if not g.get("unidentified") or level < rules.IDENTIFY_MIN_LEVEL:
+        rarity = g.get("rarity")
+        # 自动鉴定的等级限制只对珍藏生效
+        if rarity in ("treasured", "珍藏") and level < rules.IDENTIFY_MIN_LEVEL:
             continue
         cost = 5 + 2 * level
         if m.get("coins", 0) - cost < rules.IDENTIFY_KEEP_COINS:
             continue
         api.wait_busy(m)
-        code, r = api.act(None, {"action": "identify", "item": g["id"], "wait": False})
+        code, r = api.act(unit, {"action": "identify", "item": g["id"], "wait": False})
+        api.info("[identify] %s identified %s %s L%s (#%s): %s %s" % (
+            api.who(unit), rarity, g.get("base"), level, g["id"], code,
+            json.dumps(api.clean(r), ensure_ascii=False)[:100]
+        ))
         if code != 200:
-            break
+            if code == 429 and "action points" in str(r.get("error")):
+                break
+            continue
         identified.extend(x.get("name") for x in r.get("identified") or [])
-        m, _ = api.me(None)
+        m, _ = api.me(unit)
         if not m:
             return 0, identified
     return code, identified
@@ -439,6 +449,28 @@ def plain_salvage_candidates(m):
         axes.sort(key=_rank, reverse=True)
         protected_ids.add(axes[0]["id"])
 
+    # 新增规则：不分解比自己的装备评分更高的装备，包括装备槽为空时
+    worn = m.get("worn") or {}
+    worn_scores = {}
+    for slot, item in worn.items():
+        if item and not item.get("broken"):
+            worn_scores[slot] = score(item, m, worn=True)
+
+    # 1. 装备槽为空（或已损坏）：保护背包中该槽位评分最高的一件装备（非tool部位）
+    best_for_empty_slot = {}
+    for g in gear_bag:
+        s = g.get("slot")
+        if not s or s == "tool" or s in worn_scores:
+            continue
+        sc = score(g, m)
+        rnk = _rank(g)
+        if s not in best_for_empty_slot or (sc, rnk) > (best_for_empty_slot[s][0], best_for_empty_slot[s][1]):
+            best_for_empty_slot[s] = (sc, rnk, g.get("id"))
+
+    for sc, rnk, gid in best_for_empty_slot.values():
+        if gid is not None:
+            protected_ids.add(gid)
+
     candidates = []
     salvage_runed_below = getattr(rules, "SALVAGE_RUNED_BELOW_LEVEL", 10)
     for g in gear_bag:
@@ -446,6 +478,13 @@ def plain_salvage_candidates(m):
             continue
         if g.get("unidentified"):
             continue
+
+        # 2. 装备槽非空：若该装备评分高于已穿戴装备，严禁分解
+        s = g.get("slot")
+        if s and s != "tool" and s in worn_scores:
+            if score(g, m) > worn_scores[s]:
+                continue
+
         rarity = g.get("rarity")
         lvl = g.get("level", 0) or 0
         if rules.SALVAGE_PLAIN_GEAR and rarity == "plain":
@@ -537,7 +576,8 @@ def broken_better_weapon(unit, m):
 
 def repair_due(m, unit=None):
     weapon = (m.get("worn") or {}).get("weapon") or {}
-    return ((rules.REPAIR_BROKEN_WEAPON and weapon.get("durability") == 0)
+    empty_weapon_broken_bag = not (m.get("worn") or {}).get("weapon") and "weapon" in broken_for_empty_slots(unit, m)
+    return ((rules.REPAIR_BROKEN_WEAPON and (weapon.get("durability") == 0 or empty_weapon_broken_bag))
             or bool(broken_better_weapon(unit, m))
             or broken_count(m, unit) >= rules.REPAIR_TRIBE_BROKEN)
 

@@ -45,3 +45,23 @@ def buy(unit, goods, qty, max_each=3):
         if code == 200:
             bought += take
     return bought
+
+
+def sell(unit, goods, qty, price):
+    """Sell `qty` of `goods` on the market for `price` coins each.
+    The unit goes home first if not in the camp. Returns True if listing created."""
+    m = _me(unit)
+    for _ in range(6):
+        if m.get("ring") == "camp":
+            break
+        api.act(unit, {"action": "home", "why": "selling %s: the market works only in the camp" % goods})
+        time.sleep(22)
+        m = _me(unit)
+    if m.get("ring") != "camp":
+        api.warning("[%s] cannot sell %s: not in the camp" % (api.who(unit), goods))
+        return False
+    api.wait_busy(m)
+    p = float(price) if "." in str(price) else int(price)
+    code, r = api.act(unit, {"action": "sell", "goods": goods, "qty": int(qty), "price": p})
+    api.info("[%s] sell %s %s at %s coins each: %s %s" % (api.who(unit), qty, goods, price, code, r))
+    return code in (200, 202)

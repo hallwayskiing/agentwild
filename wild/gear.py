@@ -97,8 +97,15 @@ def meet(giver, receiver, tries=3):
         r, _ = api.me(receiver)
         if not g or not r:
             return False
-        if _dist(g, r) <= NEAR:
+        d = _dist(g, r)
+        if d <= NEAR:
             return True
+        if d > 25:
+            from . import nav
+            plan = nav.plan_route(r, (g["x"], g["y"]))
+            if plan.get("steps") and any(s.get("action") in ("home", "travel") for s in plan["steps"]):
+                nav.smart_go(receiver, [g["x"], g["y"]], patience=60, tol=NEAR)
+                break
         api.act(receiver, {"action": "move", "to": [g["x"], g["y"]], "until_there": True})
         time.sleep(5)
         api.wait_busy(api.me(receiver)[0])
@@ -130,7 +137,8 @@ def hand_over(giver, receiver, items, heroes):
             if not fresh:
                 return False
             api.wait_busy(fresh)
-            if worn_slot:
+            currently_worn = (fresh.get("worn") or {}).get(worn_slot) if worn_slot else None
+            if worn_slot and currently_worn and currently_worn.get("id") == item["id"]:
                 code, res = api.act(giver, {"action": "unequip", "slot": worn_slot, "wait": False})
                 if code != 200:
                     if code == 409 and "changed lately" in (res.get("error") or ""):
@@ -338,6 +346,39 @@ def collect_valuables():
         for name, qty in tribe.currencies(u, m).items():
             code, r = api.act(u, {"action": "give", "to": "main", "goods": name, "qty": qty})
             api.debug("[valuables] %s gives %d %s to the main character: %s %s" % (u, qty, name, code, "" if code == 200 else r.get("error")))
+
+
+def collect_treasured():
+    """All heroes beside main give all treasured gear in their bags to main."""
+    for u in [u for sq in rules.SQUADS.values() for u in sq["members"] if u is not None]:
+        try:
+            give_treasured_to_main(u)
+        except Exception as e:
+            api.warning("[treasured] %s give failed: %r" % (api.who(u), e))
+
+
+def give_treasured_to_main(unit, m=None):
+    """If hero `unit` carries any treasured gear in bag, give it to the main character."""
+    if unit is None:
+        return
+    if not m:
+        m, _ = api.me(unit)
+    if not m:
+        return
+    main, _ = api.me(None)
+    if not main or _dist(m, main) > rules.GEAR_REACH:
+        return
+    for g in list(m.get("gear_bag") or []):
+        if g.get("rarity") in ("treasured", "珍藏"):
+            # Never take away gear if the hero has an empty slot for it or it is an upgrade!
+            slot = g.get("slot")
+            worn = m.get("worn") or {}
+            if not worn.get(slot) or care.power(g) > care.power(worn.get(slot)):
+                continue
+            code, r = api.act(unit, {"action": "give", "to": "main", "item": g["id"]})
+            api.info("[treasured] %s gives %s %s L%s (#%s) to main: %s %s" % (
+                api.who(unit), g.get("rarity"), g.get("base"), g.get("level"), g["id"], code, "" if code == 200 else r.get("error")
+            ))
 
 
 def coin_loop(every=300):

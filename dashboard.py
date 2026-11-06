@@ -180,11 +180,18 @@ def snapshot():
             qdata = json.load(f)
     except (OSError, ValueError):
         qdata = {}
+    # Only keep current squad heroes (filters out dismissed units like 926)
+    valid_units = {u or 0 for sq in rules.SQUADS.values() for u in sq["members"]}
+    heroes = {k: v for k, v in heroes.items() if (v.get("unit") or 0) in valid_units}
+
     for k, h in live().items():   # the fresh request wins over the worker's snapshot (xp, ring, notes and targets stay from it)
-        heroes[str(k)] = dict(heroes.get(str(k)) or {}, **{a: b for a, b in h.items() if b is not None})
+        if (h.get("unit") or 0) in valid_units:
+            heroes[str(k)] = dict(heroes.get(str(k)) or {}, **{a: b for a, b in h.items() if b is not None})
     out = []
     now = time.time()
     for h in sorted(heroes.values(), key=lambda h: (h["unit"] not in (0, 928), h["unit"])):
+        if (h.get("unit") or 0) not in valid_units:
+            continue
         if h.get("squad") not in rules.SQUADS:
             unit = h["unit"] or None
             h["squad"] = next((k for k, v in rules.SQUADS.items() if unit in v["members"] and not v.get("land")), "")

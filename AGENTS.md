@@ -13,6 +13,7 @@ this file is the map of **our** code and of the parts of the game that the code 
   (`rules.TELEPORT`) only on the owner's word.
 - The owner's standing orders live in **`wild/rules.py`** and nowhere else; a rule changes there (and in `describe()`), then restart.
 - One `wild.py run` process only. Orders go through `orders.txt`, never by starting a second process.
+- **禁止编写一次性独立脚本与 wild.py 抢夺控制权**。所有操作必须通过任务队列（`orders.txt` / `queue.py`）或 `wild.py` 子命令实现，严禁脱离守护进程直接调用底层 API 进行外部并发操作。
 
 ## The game, as far as the code needs it
 

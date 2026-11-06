@@ -13,8 +13,11 @@ def can_fight_back(m, near, floor=FLOOR):
     """Ambushed by `near` (all attacking us): kill them weakest first while the rest keep hitting; returns
     (we end over `floor` of our health, fraction left). Elites count with their affixes (combat.solo_elite maths)."""
     from . import bestiary
+    threats = [t for t in near if t.get("level", 1) >= m["level"] - rules.MAX_LEVEL_DIFF]
+    if not threats:
+        return True, 1.0
     mates = []
-    for t in near:
+    for t in threats:
         names = t.get("elite") or []
         hp = t.get("hp") or bestiary.hp_at(t.get("kind"), t.get("level", 1), bool(t.get("elite")))   # (a view without hp: the model's)
         for n in names:
@@ -38,7 +41,8 @@ def can_fight_back(m, near, floor=FLOOR):
 
 def fight_back(u, m, near):
     """Swing at the ambushers, weakest first, four rounds at a time; stops when the model's floor is crossed."""
-    order = sorted(near, key=lambda t: t.get("hp", 0))
+    threats = [t for t in near if t.get("level", 1) >= m["level"] - rules.MAX_LEVEL_DIFF]
+    order = sorted(threats, key=lambda t: t.get("hp", 0))
     fresh = None   # our state: read once, then taken from each attack's answer (it carries the health after the round)
     for t in order:
         for _ in range(8):
@@ -92,18 +96,22 @@ def handle(u, m, view, say=print, flee=True):
     from . import care
     care.heal_with_items(u, m)
     care.eat(u, m)
-    ok, left = can_fight_back(m, near)
-    names = ", ".join("%s L%s" % (t["kind"], t["level"]) for t in near[:4])
+    threats = [t for t in near if t.get("level", 1) >= m["level"] - rules.MAX_LEVEL_DIFF]
+    if not threats:
+        # 偷袭者全是比自己低 >5 级的小怪：不还击，直接忽略并继续正常行动，绝不回营
+        return None
+    ok, left = can_fight_back(m, threats)
+    names = ", ".join("%s L%s" % (t["kind"], t["level"]) for t in threats[:4])
     if ok:
-        say("%s ambushed by %s (%s): beatable (~%d%% health left): fighting back" % (api.who(u), len(near), names, left * 100))
-        if fight_back(u, m, near):
+        say("%s ambushed by %s (%s): beatable (~%d%% health left): fighting back" % (api.who(u), len(threats), names, left * 100))
+        if fight_back(u, m, threats):
             return "fought"
     if not flee:   # the gatherers: not home, the work goes on
         say("%s ambushed by %s (%s): %s: carries on [my hp %s/%s, left est %d%%]" % (
-            api.who(u), len(near), names, "the fight went badly" if ok else "cannot win cheaply", m["hp"], m["max_hp"], left * 100))
+            api.who(u), len(threats), names, "the fight went badly" if ok else "cannot win cheaply", m["hp"], m["max_hp"], left * 100))
         return "avoid"
     say("%s ambushed by %s (%s): %s: home at once [my hp %s/%s, left est %d%%, creatures %s]" % (
-        api.who(u), len(near), names, "the fight went badly" if ok else "cannot win cheaply", m["hp"], m["max_hp"], left * 100,
-        [(t["kind"], t.get("level"), t.get("hp"), t.get("elite")) for t in near[:3]]))
+        api.who(u), len(threats), names, "the fight went badly" if ok else "cannot win cheaply", m["hp"], m["max_hp"], left * 100,
+        [(t["kind"], t.get("level"), t.get("hp"), t.get("elite")) for t in threats[:3]]))
     api.act(u, {"action": "home", "why": "real ambush by %s, %s" % (names, "the fight went badly" if ok else "cannot win cheaply")})
     return "home"

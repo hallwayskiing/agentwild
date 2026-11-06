@@ -13,7 +13,7 @@ import os
 import threading
 import time
 
-from . import api, care, lease, rules
+from . import api, care, lease, queue, rules
 
 PAUSE = threading.Event()         # set while the squad is assembling or inside: hunting squads stand still
 LORD = rules.LORD
@@ -159,10 +159,22 @@ def run_once():
             return False
         fight_loop()
         api.act(None, {"action": "abyss", "do": "leave"})
+        care.identify()
+        m_after, _ = api.me(None)
+        if m_after:
+            care.auto_salvage(None, m_after)
         return True
     finally:
-        for u in joined:
-            api.act(None, {"action": "detach", "hero": u})  # only the agent (the main character) sends heroes out
+        try:
+            m_curr, _ = api.me(None)
+            squad_heroes = [h["id"] for h in (m_curr.get("hero") or {}).get("squad") or []] if m_curr else []
+            for u in squad_heroes:
+                code, _ = api.act(None, {"action": "detach", "hero": u})
+                if code == 200:
+                    api.info("[abyss] detached %s; standing by in camp" % u)
+                    queue.add(u, "stay", prio=9, force=True)
+        except Exception as e:
+            api.warning("[abyss] detach after run failed: %r" % e)
         PAUSE.clear()
 
 
@@ -177,9 +189,21 @@ def resume():
     try:
         fight_loop(left)
         api.act(None, {"action": "abyss", "do": "leave"})
+        care.identify()
+        m_after, _ = api.me(None)
+        if m_after:
+            care.auto_salvage(None, m_after)
     finally:
-        for u in [u for sq in rules.SQUADS.values() for u in sq["members"] if u is not None]:
-            api.act(None, {"action": "detach", "hero": u})
+        try:
+            m_curr, _ = api.me(None)
+            squad_heroes = [h["id"] for h in (m_curr.get("hero") or {}).get("squad") or []] if m_curr else []
+            for u in squad_heroes:
+                code, _ = api.act(None, {"action": "detach", "hero": u})
+                if code == 200:
+                    api.info("[abyss] detached %s; standing by in camp" % u)
+                    queue.add(u, "stay", prio=9, force=True)
+        except Exception as e:
+            api.warning("[abyss] detach after run failed: %r" % e)
         PAUSE.clear()
 
 

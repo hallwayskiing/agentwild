@@ -59,6 +59,11 @@ def build(kind, members=(), builder=LEADER):
             break
         code, r = api.act(builder, {"action": "build", "kind": kind, "at": at})
         api.debug("build %s at %s: %s %s" % (kind, at, code, r.get("error") or ""))
+        if code == 400:
+            err = str(r.get("error") or "").lower()
+            if any(w in err for w in ("level", "totem", "need", "resource", "material", "quota", "full")):
+                api.warning("[%s] cannot build %s: %s" % (api.who(builder), kind, r.get("error")))
+                return None
         if code == 200:
             bid = r.get("building")
             for u in members:
@@ -342,6 +347,7 @@ def stage_rest(unit, force=False):
     resupplying there with deposit_all) and wait on its land; otherwise go home and rest in the camp. Ends
     when the land is due, so the land squad can take over at once."""
     from . import landwatch, queue
+    landwatch._update_stage()
     deposited = False
     while landwatch.STATE.get("stage") and not queue.waiting(unit):
         due = landwatch.due_in()
@@ -380,13 +386,10 @@ def stage_rest(unit, force=False):
 
 def path_safe():
     return True
-    return route.safe()
 
 
 def go(unit, patience=None, force=False, bail=None, min_hp=0, until=None):
-    """To the tribe land on foot. True once there; False when the way stayed closed for `patience` seconds, every way in
-    is guarded, `until` said stop, or this hero has no waypoint into the highlands or the forest yet. `force`: whatever
-    the road looks like."""
+    """To the tribe land using smart AP navigation. True once there."""
     m, _ = api.me(unit)
     if not m:
         return False
@@ -394,14 +397,13 @@ def go(unit, patience=None, force=False, bail=None, min_hp=0, until=None):
         return True
     import sys as _sys, os as _os
     f = _sys._getframe(1)   # the owner (2026-11-04): every trip to the tribe is explained in the log
-    api.debug("[tribe] %s walks to the tribe: called by %s.%s (hp %s/%s, ap %s)" % (
+    api.debug("[tribe] %s travels to the tribe: called by %s.%s (hp %s/%s, ap %s)" % (
         "main" if not unit else unit, _os.path.basename(f.f_code.co_filename), f.f_code.co_name, m["hp"], m["max_hp"], m["ap"]))
     if not nav.can_reach_tribe(m):
         api.warning("[%s] no waypoint into the tribe's rings yet" % (api.who(unit)))
         return False
     try:
-        nav.walk_to_tribe(unit, min_hp=min_hp, patience=patience, force=force, bail=bail, until=until)
-        return True
+        return nav.smart_go(unit, "tribe", min_hp=min_hp, patience=patience, force=force, bail=bail, until=until)
     except (nav.RouteClosed, nav.Bailed):
         return False
 
@@ -468,6 +470,12 @@ def visit(unit, train=0, heal=False, patience=None, max_minutes=25, force=False,
                 trained += 1
                 if code == 202:
                     api.wait_result(r)
+                # If training building is currently raising, also contribute work to speed up upgrade
+                tb = next((b for b in (info() or {}).get("building_list") or [] if b.get("kind") == "training"), None)
+                if tb and tb.get("raising"):
+                    wcode, wr = api.act(unit, {"action": "work", "building": tb["id"]})
+                    if wcode in (200, 202):
+                        api.debug("[%s] also working on training ground upgrade #%s" % (api.who(unit), tb["id"]))
             elif code == 0:
                 api.debug("[%s] train timeout (code 0): retrying in 10s" % api.who(unit))
                 time.sleep(10)
@@ -489,6 +497,11 @@ def visit(unit, train=0, heal=False, patience=None, max_minutes=25, force=False,
     if not balance_supplies(unit):
         return False
     from . import queue
+    # If the hero resumes hunting, head straight to the hunt from the tribe rather than returning to camp
+    next_tasks = queue._tasks.get(unit) or []
+    if not next_tasks or any(t.get("action") == "hunt" or t.get("arg") == "resume-hunt" for t in next_tasks):
+        api.info("[%s] done at the tribe: heading straight to the hunt (no camp detour)" % api.who(unit))
+        return True
     if not queue._go_home(unit, "the tribe visit is done: stored, trained and healed"):
         return False
     api.debug("[%s] done at the tribe: back to the camp" % (api.who(unit)))
@@ -541,29 +554,6 @@ def muster(unit, ap=70, squad=False):
             last[0] = time.time()
             api.debug("[muster %s] waiting for: %s" % (api.who(unit), _muster["text"]))
         time.sleep(30)
-
-def raise_totem(unit):
-    """Work on the totem while the tribe raises it (`work` keeps a hero building 5 minutes within 2 tiles): stands beside the
-    totem and sends it again every 5 minutes until the totem has reached its next level or another order comes."""
-    from . import queue
-    last = [0.0]
-    while True:
-        if queue.waiting(unit):
-            return True
-        t = (info() or {})
-        totem = next((b for b in t.get("building_list", []) if b["kind"] == "totem"), None)
-        if not totem or not (t.get("totem") or {}).get("raising"):
-            api.info("[%s] the totem is no longer being raised: done" % (api.who(unit)))
-            return True
-        m, _ = api.me(unit)
-        if m and m["hp"] > 0:
-            if max(abs(m["x"] - totem["x"]), abs(m["y"] - totem["y"])) > 2:
-                api.act(unit, {"action": "move", "to": [totem["x"] + 1, totem["y"] + 1], "until_there": True})
-            code, r = api.act(unit, {"action": "work", "building": totem["id"]})
-            if time.time() - last[0] > 600 or code != 200:
-                last[0] = time.time()
-                api.debug("[%s] works on the totem: %s %s" % (api.who(unit), code, str(api.clean(r))[:160]))
-        time.sleep(240)
 
 
 def gather(unit, force=False):
@@ -722,6 +712,11 @@ def _build_by_walking(kind, members, builder):
         api.wait_busy(mm)
         code, r = api.act(builder, {"action": "build", "kind": kind, "at": [tx, ty]})
         api.debug("build %s from (%s,%s) at (%s,%s): %s %s" % (kind, sx, sy, tx, ty, code, r.get("error") or ""))
+        if code == 400:
+            err = str(r.get("error") or "").lower()
+            if any(w in err for w in ("level", "totem", "need", "resource", "material", "quota", "full")):
+                api.warning("[%s] cannot build %s: %s" % (api.who(builder), kind, r.get("error")))
+                return None
         if code in (200, 202):   # 202: queued behind the walk: it is placed a moment later, the building's id comes from the tribe's list
             bid = r.get("building")
             for _ in range(10):
@@ -733,3 +728,183 @@ def _build_by_walking(kind, members, builder):
                 api.act(u, {"action": "work", "building": bid})
             return bid
     return None
+
+
+def find_building(target):
+    """Find a building in tribe by id (int or str) or kind (str like 'training', 'totem', 'storehouse', etc.)."""
+    if target is None:
+        return None
+    t = info() or {}
+    bl = t.get("building_list") or []
+    target_str = str(target).strip().lower()
+    if target_str.isdigit():
+        bid = int(target_str)
+        return next((b for b in bl if b.get("id") == bid), None)
+    alias = {
+        "store": "storehouse",
+        "training_ground": "training",
+        "training-ground": "training",
+        "training ground": "training",
+    }
+    kind = alias.get(target_str, target_str)
+    return next((b for b in bl if b.get("kind") == kind or b.get("kind") == target_str), None)
+
+
+def best_work_train_spot(b, tb=None, m=None):
+    """Find a tile (x, y) within 2 Chebyshev distance of building b, and if possible within 2 of tb (training)."""
+    bx, by = b.get("x"), b.get("y")
+    if bx is None or by is None:
+        return None
+    if not tb or tb.get("x") is None or tb.get("y") is None:
+        return (bx, by)
+    tx, ty = tb["x"], tb["y"]
+    x_min, x_max = max(bx - 2, tx - 2), min(bx + 2, tx + 2)
+    y_min, y_max = max(by - 2, ty - 2), min(by + 2, ty + 2)
+    candidates = []
+    if x_min <= x_max and y_min <= y_max:
+        for x in range(x_min, x_max + 1):
+            for y in range(y_min, y_max + 1):
+                candidates.append((x, y))
+    if not candidates:
+        for x in range(bx - 2, bx + 3):
+            for y in range(by - 2, by + 3):
+                candidates.append((x, y))
+        candidates.sort(key=lambda p: max(abs(p[0] - tx), abs(p[1] - ty)))
+    else:
+        if m and (m.get("x"), m.get("y")) in candidates:
+            return (m["x"], m["y"])
+        if m:
+            candidates.sort(key=lambda p: max(abs(p[0] - m["x"]), abs(p[1] - m["y"])))
+    return candidates[0] if candidates else (bx, by)
+
+
+def upgrade(unit, target=None):
+    """Atomic action: upgrade a building or totem in the tribe.
+    Finds a spot within 2 tiles of the building and (if possible) within 2 tiles of the training ground.
+    Defaults to starting work on the building, and starts training if within training range."""
+    who = api.who(unit)
+    m, _ = api.me(unit)
+    if not m:
+        return False
+    if not nav.at_tribe(m):
+        api.warning("[%s] cannot upgrade %s: not on tribe land" % (who, target))
+        return False
+
+    t = info() or {}
+    bl = t.get("building_list") or []
+
+    b = find_building(target)
+    if not b:
+        if target in (None, "totem"):
+            b = next((x for x in bl if x.get("kind") == "totem"), None)
+        if not b:
+            api.warning("[%s] building %r not found in tribe" % (who, target))
+            return False
+
+    tb = next((x for x in bl if x.get("kind") == "training"), None)
+    best_spot = best_work_train_spot(b, tb, m)
+    if best_spot and (m.get("x"), m.get("y")) != best_spot:
+        nav.walk(unit, best_spot, 0)
+        m, _ = api.me(unit)
+
+    bid = b.get("id")
+    payload = {"action": "upgrade"}
+    if b.get("kind") != "totem" and bid is not None:
+        payload["building"] = bid
+
+    code, r = api.act(unit, payload)
+    api.info("[%s] upgrade building %s (#%s): %s %s" % (who, b.get("kind"), bid, code, r))
+    err = str((r or {}).get("error", ""))
+    upgraded = code in (200, 202) or "already" in err.lower() or "max" in err.lower()
+
+    if upgraded and bid is not None:
+        # 默认开始 work
+        wcode, wr = api.act(unit, {"action": "work", "building": bid})
+        api.info("[%s] default work on building %s (#%s): %s %s" % (who, b.get("kind"), bid, wcode, wr))
+
+        # 尽力开始 train
+        m, _ = api.me(unit)
+        if tb and m and nav.dist(m, (tb["x"], tb["y"])) <= 2 and has_quota(unit):
+            tcode, tr = train_once(unit)
+            api.info("[%s] start training at training ground (#%s): %s %s" % (who, tb["id"], tcode, tr))
+
+    return upgraded
+
+
+def work_building(unit, target=None):
+    """Atomic action: contribute work to a building or totem under construction or upgrade.
+    Approaches within 2 tiles and calls {"action": "work", "building": bid}."""
+    who = api.who(unit)
+    m, _ = api.me(unit)
+    if not m or not nav.at_tribe(m):
+        api.warning("[%s] cannot work on %s: not on tribe land" % (who, target))
+        return False
+
+    b = find_building(target) or next((x for x in (info() or {}).get("building_list", []) if x.get("kind") == "totem"), None)
+    if not b:
+        api.warning("[%s] building %r not found in tribe to work on" % (who, target))
+        return False
+
+    bx, by = b.get("x"), b.get("y")
+    if bx is not None and by is not None and nav.dist(m, (bx, by)) > 2:
+        nav.walk(unit, (bx, by), 2)
+
+    bid = b.get("id")
+    code, r = api.act(unit, {"action": "work", "building": bid})
+    api.info("[%s] work on building %s (#%s): %s %s" % (who, b.get("kind"), bid, code, r))
+    return code in (200, 202)
+
+
+def withdraw_goods(unit, goods, qty):
+    """Atomic action: withdraw `qty` of `goods` from the tribe storehouse into hero's bag."""
+    who = api.who(unit)
+    m, _ = api.me(unit)
+    if not m:
+        return False
+    if not nav.at_tribe(m):
+        api.warning("[%s] cannot withdraw %s: not on tribe land" % (who, goods))
+        return False
+    api.wait_busy(m)
+    code, r = api.act(unit, {"action": "withdraw", "items": {goods: int(qty)}})
+    api.info("[%s] withdraw %s %s from tribe store: %s %s" % (who, qty, goods, code, r))
+    return code in (200, 202)
+
+
+
+def build_building(unit, kind):
+    """Atomic build operation:
+    1. Smart-travels to tribe land.
+    2. Checks whether building kind is unlocked and can be built.
+    3. Attempts build at open spot beside unit.
+    4. Automatically contributes work on the newly placed building,
+       and trains if within range of the training ground."""
+    who = api.who(unit)
+    if not go(unit, force=True):
+        api.warning("[%s] build %s: failed to reach tribe land" % (who, kind))
+        return False
+
+    t = info() or {}
+    level = t.get("level", 1)
+    can_build_list = t.get("can_build") or []
+    can_kinds = [b.get("kind") for b in can_build_list]
+
+    # Map aliases: e.g. market -> stall if applicable
+    target_kind = kind
+    if kind in ("market", "stall"):
+        if "market" in can_kinds:
+            target_kind = "market"
+        elif "stall" in can_kinds:
+            target_kind = "stall"
+        else:
+            api.warning("[%s] cannot build %s: Totem is level %d, market stall requires Totem level 3 (unlocked at level 3, currently level %d)" % (
+                who, kind, level, level))
+            target_kind = "stall"
+
+    api.info("[%s] attempting to build %s on tribe land" % (who, target_kind))
+    bid = build(target_kind, builder=unit)
+    if bid:
+        api.info("[%s] successfully built %s (id: %s)! Now contributing work" % (who, target_kind, bid))
+        return work_building(unit, str(bid))
+    else:
+        api.warning("[%s] cannot build %s (not in can_build or server rejected; totem level: %d); order concluded" % (who, target_kind, level))
+        return True

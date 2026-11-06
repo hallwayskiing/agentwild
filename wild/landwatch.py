@@ -18,6 +18,9 @@ from . import api, lease, rules
 
 STATE = {"on": False, "stage": False}   # on: the land squad is in charge of the main character and the lord; stage: they rest in the camp, a land of our kind is due
 AREA = [102, 110, 12]      # x, y and reach (tiles) of the land being hunted
+RING = [None]
+GUARDIAN = [None]          # guardian creature id when phase == "guardian"
+PHASE = [None]
 _seen = [None]            # ends_at of the last land reported as skipped
 _next = [0.0]              # epoch of the predicted start of the next land (0: unknown)
 _kind = {"start": 0.0, "target": False}   # start of the last land seen, and was it of our kind (rules.CORRUPT_LAND ring and levels)
@@ -42,15 +45,14 @@ def _read():
 def _ours(land):
     cfg = rules.CORRUPT_LAND
     ring = land.get("ring")
-    rings = cfg.get("rings") or ((cfg.get("ring"),) if cfg.get("ring") else ("meadow", "forest"))
+    rings = cfg.get("rings") or ((cfg.get("ring"),) if cfg.get("ring") else ("meadow", "forest", "highlands"))
     if ring not in rings:
         return False
     lvls = list(land.get("levels") or [])
     if not lvls:
         return False
-    # Only check max level <= 12
     max_lv = max(lvls)
-    return max_lv <= cfg.get("max_level", 12)
+    return max_lv <= cfg.get("max_level", 18)
 
 
 def _worth_it(land):
@@ -91,14 +93,15 @@ def _update_stage():
     want = bool(not STATE["on"] and _next_is_ours() and -cfg["grace"] < due <= cfg["stage"])
     if want and not STATE["stage"]:
         api.info("[land] a land of our kind is due in %d min: the main character and the lord wait for it (the tribe when worthwhile, else the camp)" % max(0, due // 60))
-        from . import queue
-        for u in cfg["units"]:
-            # (the owner, 2026-11-05): 虚空腐化之地开启时暂停打怪以免抢怪冲突
-            if queue.hunting(u):
-                queue.add(u, "land-stage", "resume-hunt", prio=9)
     elif STATE["stage"] and not want:
         api.debug("[land] the wait in the camp is over")
     STATE["stage"] = want
+    if want:
+        from . import queue
+        for u in cfg["units"]:
+            # (the owner, 2026-11-05): 虚空腐化之地开启时暂停打怪以免抢怪冲突
+            if queue.hunting(u) or not queue.busy(u):
+                queue.add(u, "land-stage", "resume-hunt", prio=9)
 
 
 def check():
@@ -118,14 +121,18 @@ def check():
     if _worth_it(land):
         left = api.iso_wait(land["ends_at"])
         AREA[:] = [land["x"], land["y"], land.get("r", 7) + rules.CORRUPT_LAND["reach"]]
-        if not STATE["on"] and _free():
+        RING[0] = land.get("ring")
+        old_phase = PHASE[0]
+        PHASE[0] = land.get("phase")
+        GUARDIAN[0] = land.get("guardian")
+        if not STATE["on"]:
             STATE["on"] = True
-            api.info("[land] open in the %s at (%s,%s), levels %s, %d minutes left: the main character and the lord go there together" % (
-                land["ring"], land["x"], land["y"], land["levels"], left // 60))
-        if STATE["on"] and not _free():
-            STATE["on"] = False
-            api.warning("[land] the main character or the lord was taken by an order: the land squad ends")
-        return (left if STATE["on"] else 0), land
+            api.info("[land] open in the %s at (%s,%s), levels %s, phase %s, %d minutes left: heroes hunt there independently" % (
+                land["ring"], land["x"], land["y"], land["levels"], land.get("phase"), left // 60))
+        elif old_phase != PHASE[0] and PHASE[0] == "guardian":
+            api.info("[land] GUARDIAN RISEN! Guardian ID %s, %d minutes left: engage boss immediately!" % (
+                GUARDIAN[0], left // 60))
+        return left, land
     if land.get("ends_at") and not STATE["on"]:   # a land is there but not for us: say why (once per land)
         key = land.get("ends_at")
         if _seen[0] != key:
@@ -137,15 +144,18 @@ def check():
                 wanted_rings, cfg.get("max_level", 12)))
     if STATE["on"]:
         STATE["on"] = False
-        api.info("[land] over or changed: the main character and the lord are back in the forest")
+        RING[0] = None
+        PHASE[0] = None
+        GUARDIAN[0] = None
+        api.info("[land] over or changed: heroes resume their standard hunting")
     return 0, land
 
 
 def _wait_for(land, left):
     """Seconds to sleep before the next look."""
     cfg = rules.CORRUPT_LAND
-    if left:                                    # hunting it: look again the moment it closes
-        return left + 5
+    if left:                                    # hunting it: check frequently to track guardian & phase transitions
+        return 15
     if land is None:                            # the read failed
         return 30
     until = _next[0] - time.time()
