@@ -10,10 +10,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERE = os.path.dirname(os.path.abspath(__file__))
 _cache = {"at": 0.0, "live": {}}
 FOOD = ("bandage", "bread", "roast", "meat", "stew", "pie", "veggie_soup", "wheat", "carrot", "corn", "pumpkin")   # consumables of the bag
+MATS = ("wood", "stone", "ore", "hide", "herb", "bone", "iron_ore", "dust", "copper_ore", "whetstone", "plating")
 
 
 def items(bag):
     return {k: bag[k] for k in FOOD if bag.get(k)}
+
+
+def mats(bag):
+    return {k: bag[k] for k in MATS if bag.get(k)}
 
 
 GRADE = {"gold": "黄金", "silver": "白银", "iron": "黑铁"}
@@ -45,12 +50,12 @@ def live():
     offhand = (m.get("worn") or {}).get("offhand") or {}
     out[0] = {"unit": 0, "level": m.get("level"), "xp": m.get("xp"), "xp_next": m.get("xp_next"), "hp": m.get("hp"),
               "max_hp": m.get("max_hp"), "ap": m.get("ap"), "ap_max": m.get("ap_max"), "ring": m.get("ring"), "x": m.get("x"),
-              "y": m.get("y"), "coins": m.get("coins"), "bread": (m.get("bag") or {}).get("bread"), "items": items(m.get("bag") or {}), "weapon": w.get("base"), "offhand": offhand.get("base"), "offhand_level": offhand.get("level"), "offhand_dur": offhand.get("durability"), "offhand_max": offhand.get("durability_max"), "title": title(m.get("hero") or {}), "at": now}
+              "y": m.get("y"), "coins": m.get("coins"), "bread": (m.get("bag") or {}).get("bread"), "items": items(m.get("bag") or {}), "mats": mats(m.get("bag") or {}), "weapon": w.get("base"), "offhand": offhand.get("base"), "offhand_level": offhand.get("level"), "offhand_dur": offhand.get("durability"), "offhand_max": offhand.get("durability_max"), "title": title(m.get("hero") or {}), "at": now}
     for u in r["me"].get("units") or []:
         bag = u.get("bag") or {}
         at = u.get("at") or [None, None]
         out[u["hero"]] = {"unit": u["hero"], "level": u.get("level"), "hp": u.get("hp"), "max_hp": u.get("max_hp"), "ap": u.get("ap"),
-                          "ap_max": u.get("ap_max"), "x": at[0], "y": at[1], "coins": u.get("coins"), "bread": bag.get("bread"), "items": items(bag), "title": title(roles.get(u["hero"]) or {}), "at": now}
+                          "ap_max": u.get("ap_max"), "x": at[0], "y": at[1], "coins": u.get("coins"), "bread": bag.get("bread"), "items": items(bag), "mats": mats(bag), "title": title(roles.get(u["hero"]) or {}), "at": now}
     # the list carries no experience: one more hero's own read per refresh (so each hero's xp is at most ~2 minutes old)
     ids = sorted(k for k in out if k)
     if ids:

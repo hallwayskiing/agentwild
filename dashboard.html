@@ -35,6 +35,7 @@ tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a17
 .num{font-variant-numeric:tabular-nums;font-size:12px;color:var(--tx);margin-bottom:3px;white-space:nowrap}.num small{color:var(--mut)}
 .job{font-weight:600}.note{color:var(--mut);font-size:12px;max-width:340px}
 .mats span{display:inline-block;margin:0 6px 2px 0;padding:0 6px;border-radius:5px;background:#232a35;font-size:12px}
+.mats span.dust{background:#282038;color:#d6c1ff;border:1px solid #523f78}
 .tgt{color:#7fc8ff;font-weight:550}.low{color:#ff9a9a}.warn{color:#f2b84b}.mut{color:var(--mut)}
 .feed{height:300px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}
 .feed div{padding:1px 6px;border-left:2px solid transparent;word-break:break-word}
@@ -53,13 +54,13 @@ tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a17
 const COL={ember:'#e0603c',solstice:'#43c985',silverwing:'#5ab0f2',nightjar:'#b78cff',astral:'#f2b84b'};
 let SQ={};
 const RING={camp:'营地',meadow:'草甸',forest:'森林',highlands:'高地',ashlands:'灰烬之地',ruins:'遗迹'};
-const RES={wood:'木材',stone:'石头',ore:'铜矿'};
+const RES={wood:'木材',stone:'石头',ore:'铜矿',copper_ore:'铜矿',iron_ore:'铁矿',hide:'兽皮',herb:'草药',bone:'兽骨',dust:'符尘',whetstone:'磨刀石',plating:'护甲片',wheat_seed:'麦种',wheat:'小麦'};
 const pct=(a,b)=>b?Math.max(0,Math.min(100,100*a/b)):0;
 const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const bar=(cls,a,b)=>`<div class="bar ${cls}"><i style="width:${pct(a,b)}%"></i></div>`;
 function row(h,now){
  const age=Math.round(now-h.at),c=COL[h.squad]||'#8b95a5',low=h.hp<0.35*h.max_hp;
- const mats=Object.entries(h.mats||{}).map(([k,v])=>`<span>${RES[k]||k} ${v}</span>`).join('')||'<span class=mut>空</span>';
+ const mats=Object.entries(h.mats||{}).map(([k,v])=>`<span class="${k==='dust'?'dust':''}">${RES[k]||k} ${v}</span>`).join('')||'<span class=mut>空</span>';
  const job=h.job?`<span class="job">${RES[h.job]||h.job}</span> · `:'';
  const nage=h.note_at?Math.round(now-h.note_at):0;
  const fd=h.food;
