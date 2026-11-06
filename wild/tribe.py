@@ -295,9 +295,9 @@ def recover(unit, force=False):
             if not m:
                 time.sleep(15)
                 continue
-        # 血线拉回（在野外且血量恢复到危险线以上）：取消回城/恢复，原地继续狩猎
+        # Health restored in the field: cancel return home / recovery, resume hunt on the spot
         if m.get("ring") != "camp" and m.get("hp", 0) >= m.get("max_hp", 1) * rules.HOME_BELOW:
-            api.info("[%s] 血线已拉回 (hp %d/%d >= %d%%): 取消回城/恢复，原地继续狩猎" % (
+            api.info("[%s] health restored (hp %d/%d >= %d%%): cancel return home, resume hunt on the spot" % (
                 api.who(unit), m["hp"], m["max_hp"], int(rules.HOME_BELOW * 100)))
             return True
         if m.get("ring") == "camp":
