@@ -194,7 +194,17 @@ def act(unit, payload):
         why = payload.pop("why", None)
         if payload.get("action") == "home":   # the owner (2026-11-04): every trip home is explained in the log
             f = sys._getframe(1)
-            warning("[home] %s: %s (%s:%s)" % ("main" if not unit else unit, why or "no reason given", os.path.basename(f.f_code.co_filename), f.f_code.co_name))
+            loc = "(%s:%s)" % (os.path.basename(f.f_code.co_filename), f.f_code.co_name)
+            msg = "[home] %s: %s %s" % ("main" if not unit else unit, why or "no reason given", loc)
+            w_lower = (why or "").lower()
+            if "visit is done" in w_lower or "trip is done" in w_lower:
+                notice(msg)
+            elif "starts from the camp" in w_lower or "standing by" in w_lower:
+                info(msg)
+            elif "ambush" in w_lower or "hurt" in w_lower or "danger" in w_lower or "broken" in w_lower:
+                warning(msg)
+            else:
+                info(msg)
     if payload.get("action") == "attack":
         FOUGHT[unit] = time.time()
     if unit:
