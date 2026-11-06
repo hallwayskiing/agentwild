@@ -89,6 +89,9 @@ def handle(u, m, view, say=print, flee=True):
     near = strikers(u, m, view)
     if not near:
         return None
+    from . import care
+    care.heal_with_items(u, m)
+    care.eat(u, m)
     ok, left = can_fight_back(m, near)
     names = ", ".join("%s L%s" % (t["kind"], t["level"]) for t in near[:4])
     if ok:

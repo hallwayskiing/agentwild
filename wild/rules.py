@@ -612,7 +612,8 @@ WORTH_STORING = 5                # this many goods in the bag make a visit to th
 
 
 
-FOOD_KEEP = 5                    # each hero keeps 5 meat: the rest goes in, a shortfall comes out
+FOOD_KEEP = 5                    # each hero keeps 5 bread
+MEAT_KEEP = 10                   # each hero keeps 10 meat (the owner, 2026-11-05): surplus goes in, shortfall comes out
 
 
 
@@ -876,7 +877,7 @@ DUST_KEEP = 30                   # each character keeps 30 dust; surplus goes to
 
 
 
-SUPPLY_KEEP = {"bread": FOOD_KEEP, "meat": FOOD_KEEP, "dust": DUST_KEEP}
+SUPPLY_KEEP = {"bread": FOOD_KEEP, "meat": MEAT_KEEP, "dust": DUST_KEEP}
 
 
 
@@ -1164,7 +1165,7 @@ def describe():
 
 
 
-        "【部落仓库】严格白名单存仓：全存（木头、石头、兽皮、草药、骨头、铜矿石、铁矿石、小麦种子）；多存少补（肉保留 %d、面包保留 %d、符尘保留 %d）；熟肉、绷带、符文及宝石留在身上，不自动存仓；金币每人最多带 %d，多的存入金库" % (
+        "【部落仓库】严格白名单存仓：全存（木头、石头、兽皮、草药、骨头、铜矿石、铁矿石、小麦种子、磨刀石、护甲片）；多存少补（肉保留 %d、面包保留 %d、符尘保留 %d）；熟肉、绷带、符文及宝石留在身上，不自动存仓；金币每人最多带 %d，多的存入金库" % (
 
 
 
@@ -1172,7 +1173,7 @@ def describe():
 
 
 
-            FOOD_KEEP, FOOD_KEEP, DUST_KEEP, COIN_KEEP),
+            MEAT_KEEP, FOOD_KEEP, DUST_KEEP, COIN_KEEP),
 
 
 

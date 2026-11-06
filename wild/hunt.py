@@ -327,16 +327,17 @@ class Squad:
             state.update(u, m, self.name)
             if "tribe" not in (state._notes.get(u or 0, ("",))[0] or ""):
                 state.note(u, "狩猎待命(%s)" % self.name)
-            if m["hp"] > 0 and m["ring"] != "camp" and m["ap"] >= HOME_AP:
-                def _log_ambush(t):
-                    if "beatable" in t or "fighting back" in t:
-                        self.say("INFO", t)
-                    else:
-                        self.say("WARNING", t)
-                if ambush.handle(u, m, view, say=_log_ambush) == "home":   # a real ambush: fought if winnable, else home
-                    m["ring"] = "camp"
+            if m["hp"] > 0 and m["ring"] != "camp":
+                self.food_heal(u, m)   # food healing outranks going home: heal first before ambush/recover!
+                if m["ap"] >= HOME_AP:
+                    def _log_ambush(t):
+                        if "beatable" in t or "fighting back" in t:
+                            self.say("INFO", t)
+                        else:
+                            self.say("WARNING", t)
+                    if ambush.handle(u, m, view, say=_log_ambush) == "home":   # a real ambush: fought if winnable, else home
+                        m["ring"] = "camp"
             care.claim_chest(u, m)   # (the main character only, in the camp, once a day after 12:00 UTC+8)
-            self.food_heal(u, m)   # food healing outranks going home: only a hero still hurt afterwards recovers
             if self.queue_recover_if_hurt(u, m):
                 continue  # the recovery worker owns all subsequent actions
             if care.repair_due(m, u):

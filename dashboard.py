@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERE = os.path.dirname(os.path.abspath(__file__))
 _cache = {"at": 0.0, "live": {}}
 FOOD = ("bandage", "bread", "roast", "meat", "stew", "pie", "veggie_soup", "wheat", "carrot", "corn", "pumpkin")   # consumables of the bag
-MATS = ("wood", "stone", "ore", "hide", "herb", "bone", "iron_ore", "dust", "copper_ore", "whetstone", "plating")
+MATS = ("wood", "stone", "ore", "hide", "herb", "bone", "iron_ore", "dust", "copper_ore")
 
 
 def items(bag):

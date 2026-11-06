@@ -25,7 +25,7 @@ try:   # the last snapshot comes back with the process: the dashboard is not emp
     _meta.update(_old.get("meta") or {})
 except (OSError, ValueError):
     pass
-MATS = ("wood", "stone", "ore", "hide", "herb", "bone", "iron_ore", "dust", "copper_ore", "whetstone", "plating")
+MATS = ("wood", "stone", "ore", "hide", "herb", "bone", "iron_ore", "dust", "copper_ore")
 
 
 def note(unit, text):

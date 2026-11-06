@@ -92,9 +92,10 @@ def train_once(unit):
 
 
 # --- the store ----------------------------------------------------------------------------------------------------------
-def surplus(m, keep=rules.FOOD_KEEP):
+def surplus(m, keep=None):
     bag = m.get("bag") or {}
-    return {k: bag[k] - keep for k in ("bread", "meat") if bag.get(k, 0) > keep}
+    return {k: bag[k] - rules.SUPPLY_KEEP.get(k, rules.FOOD_KEEP) for k in ("bread", "meat")
+            if bag.get(k, 0) > rules.SUPPLY_KEEP.get(k, rules.FOOD_KEEP)}
 
 
 def currencies(unit, m):

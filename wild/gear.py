@@ -210,9 +210,11 @@ def balance(groups, dry=False, everything=False):
     return all_moves
 
 
-def feed(groups, keep=rules.FOOD_KEEP):
+def feed(groups, keep=None):
     """Inside each squad, a hero with fewer than `keep` bread+meat is handed meat (up to `keep`) by a squadmate holding more
     than `keep`: the receiver steps next to the giver. What is left over beyond `keep` goes to the store on tribe visits."""
+    if keep is None:
+        keep = getattr(rules, "MEAT_KEEP", 10)
     for members in groups:
         heroes = survey(members)
         food = lambda m: sum((m.get("bag") or {}).get(k, 0) for k in ("meat", "bread", "roast"))
