@@ -170,8 +170,19 @@ class BandageRestockOffTests(unittest.TestCase):
                 mock.patch.object(queue.api, "act", return_value=(200, {})), \
                 mock.patch.object(queue.api, "wait_busy", return_value=None), \
                 mock.patch.object(queue.time, "sleep", return_value=None):
-            self.assertTrue(queue._go_home(925, "test"))
+            self.assertTrue(queue._go_home(925, "manual order"))
         self.assertIn("heal", calls)
+
+    def test_go_home_cancels_when_health_restored(self):
+        m = hero(hp=30, max_hp=100, ap=10, ring="forest", bag={"roast": 2})
+        def fake_heal(u, mm, **kw):
+            mm["hp"] = 75
+            return 2
+        with mock.patch.object(queue.api, "me", side_effect=[(m, None), (m, None)]), \
+                mock.patch.object(queue.care, "heal_with_items", side_effect=fake_heal), \
+                mock.patch.object(queue.care, "eat", return_value=False), \
+                mock.patch.object(queue.api, "act", side_effect=AssertionError("should not send home")):
+            self.assertFalse(queue._go_home(925, "recovery: hurt in the field, AP low for tribe walk"))
 
 
 if __name__ == "__main__":

@@ -291,8 +291,15 @@ def recover(unit, force=False):
         if m.get("hp", 0) < m.get("max_hp", 1) * rules.HEAL_BELOW:
             care.heal_with_items(unit, m)
             care.eat(unit, m)
-            if m["hp"] >= m["max_hp"] * rules.HEALED and not recover_goes_to_tribe(unit, m):
-                return True
+            m, _ = api.me(unit)
+            if not m:
+                time.sleep(15)
+                continue
+        # 血线拉回（在野外且血量恢复到危险线以上）：取消回城/恢复，原地继续狩猎
+        if m.get("ring") != "camp" and m.get("hp", 0) >= m.get("max_hp", 1) * rules.HOME_BELOW:
+            api.info("[%s] 血线已拉回 (hp %d/%d >= %d%%): 取消回城/恢复，原地继续狩猎" % (
+                api.who(unit), m["hp"], m["max_hp"], int(rules.HOME_BELOW * 100)))
+            return True
         if m.get("ring") == "camp":
             api.wait_busy(m)
             if care.auto_repair(unit, m):

@@ -132,6 +132,15 @@ def _go_home(unit, why="the order `home` (orders.txt)"):
 
             m, _v = api.me(unit)
 
+        if m and m.get("ring") != "camp" and m.get("hp", 0) >= m.get("max_hp", 1) * rules.HOME_BELOW:
+
+            if any(k in str(why) for k in ("hurt", "recovery", "badly", "cheaply", "ambush")):
+
+                api.info("[%s] 血线已拉回 (hp %d/%d >= %d%%): 取消回城 (%s)" % (
+                    api.who(unit), m["hp"], m["max_hp"], int(rules.HOME_BELOW * 100), why))
+
+                return False
+
         if m and m["ap"] >= 8:
 
             api.wait_busy(m)
