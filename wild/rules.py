@@ -489,7 +489,7 @@ FIGHT_FLOOR = 0.20               # shared threshold: pre-fight model, stop line 
 
 
 
-TRIP_MIN_AP = 35                 # 8 AP waypoint + about 16 AP walk, with room for home and variation
+TRIP_MIN_AP = 25                 # 8 AP waypoint + about 16 AP walk, with room for home and variation
 
 
 
@@ -579,7 +579,7 @@ TRIBE_WAYPOINT = (356, 256)      # forest waypoint on the 512-tile map
 
 
 
-STORE_KINDS = ("wood", "stone", "ore", "copper_ore", "iron_ore", "hide", "bone", "herb", "wheat_seed")
+STORE_KINDS = ("wood", "stone", "ore", "copper_ore", "iron_ore", "hide", "bone", "herb", "wheat_seed", "whetstone", "plating")
 
 
 

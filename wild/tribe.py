@@ -122,7 +122,7 @@ def recover_goes_to_tribe(unit, m):
 
 
 def deposit_all(unit):
-    """严格白名单存仓：肉、面包和符尘多存少补，其余8种白名单材料全存。熟肉、绷带、符文留在身上。"""
+    """严格白名单存仓：肉、面包和符尘多存少补，其余材料及磨刀石、护甲片全存。熟肉、绷带、符文留在身上。"""
     if not balance_supplies(unit):
         return False
     m, _ = api.me(unit)
