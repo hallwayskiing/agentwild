@@ -142,5 +142,37 @@ class BandageRestockOffTests(unittest.TestCase):
             self.assertFalse(care._bandages_short({"bag": {"bandage": 0}}))
 
 
+    def test_recovery_heals_with_items_in_the_field(self):
+        m = hero(hp=30, max_hp=100, ap=10, ring="forest", bag={"roast": 2})
+        calls = []
+        def fake_heal(u, mm, **kw):
+            calls.append("heal")
+            mm["hp"] = 95
+            return 2
+        with mock.patch.object(tribe.api, "me", return_value=(m, None)), \
+                mock.patch.object(tribe.care, "heal_with_items", side_effect=fake_heal), \
+                mock.patch.object(tribe.care, "eat", return_value=False), \
+                mock.patch.object(tribe, "recover_goes_to_tribe", return_value=False), \
+                mock.patch.object(queue, "_go_home", side_effect=AssertionError("should not go home if healed")):
+            self.assertTrue(tribe.recover(925))
+        self.assertIn("heal", calls)
+
+    def test_go_home_heals_when_hurt_in_field(self):
+        m = hero(hp=30, max_hp=100, ap=10, ring="forest", bag={"roast": 2})
+        calls = []
+        def fake_heal(u, mm, **kw):
+            calls.append("heal")
+            mm["hp"] = 60
+            return 1
+        with mock.patch.object(queue.api, "me", side_effect=[(m, None), (m, None), (dict(m, ring="camp"), None)]), \
+                mock.patch.object(queue.care, "heal_with_items", side_effect=fake_heal), \
+                mock.patch.object(queue.care, "eat", return_value=False), \
+                mock.patch.object(queue.api, "act", return_value=(200, {})), \
+                mock.patch.object(queue.api, "wait_busy", return_value=None), \
+                mock.patch.object(queue.time, "sleep", return_value=None):
+            self.assertTrue(queue._go_home(925, "test"))
+        self.assertIn("heal", calls)
+
+
 if __name__ == "__main__":
     unittest.main()

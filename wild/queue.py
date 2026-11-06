@@ -42,7 +42,7 @@ import time
 
 
 
-from . import api, lease, rules
+from . import api, care, lease, rules
 
 
 
@@ -114,6 +114,8 @@ def _go_home(unit, why="the order `home` (orders.txt)"):
 
     """`home` costs 8 points: with fewer the hero waits for them (it must really stand in the camp before the next order)."""
 
+    from . import care, rules
+
     for _ in range(60):
 
         m, _v = api.me(unit)
@@ -121,6 +123,14 @@ def _go_home(unit, why="the order `home` (orders.txt)"):
         if m and m["ring"] == "camp":
 
             return True
+
+        if m and m.get("hp", 0) < m.get("max_hp", 1) * rules.HEAL_BELOW:
+
+            care.heal_with_items(unit, m)
+
+            care.eat(unit, m)
+
+            m, _v = api.me(unit)
 
         if m and m["ap"] >= 8:
 

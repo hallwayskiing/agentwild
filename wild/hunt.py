@@ -594,10 +594,12 @@ class Squad:
         while True:
             try:
                 self.cycle()
-                for u in list(self.fought):   # the owner (2026-11-04): talent points are checked after EVERY fight
+                for u in list(self.fought):   # the owner (2026-11-04): talent points and food heal after EVERY fight
                     m, _v = api.me(u)
                     if m:
                         care.spend_talents(u, m)
+                        if m.get("hp", 0) < m.get("max_hp", 1) * rules.HEAL_BELOW:
+                            self.food_heal(u, m)
                 self.fought.clear()
             except Exception as e:
                 import traceback
