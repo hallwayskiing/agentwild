@@ -139,7 +139,7 @@ def _go_home(unit, why="the order `home` (orders.txt)"):
                 api.info("[%s] 血线已拉回 (hp %d/%d >= %d%%): 取消回城 (%s)" % (
                     api.who(unit), m["hp"], m["max_hp"], int(rules.HOME_BELOW * 100), why))
 
-                return False
+                return True
 
         if m and m["ap"] >= 8:
 

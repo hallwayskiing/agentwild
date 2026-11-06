@@ -182,7 +182,7 @@ class BandageRestockOffTests(unittest.TestCase):
                 mock.patch.object(queue.care, "heal_with_items", side_effect=fake_heal), \
                 mock.patch.object(queue.care, "eat", return_value=False), \
                 mock.patch.object(queue.api, "act", side_effect=AssertionError("should not send home")):
-            self.assertFalse(queue._go_home(925, "recovery: hurt in the field, AP low for tribe walk"))
+            self.assertTrue(queue._go_home(925, "recovery: hurt in the field, AP low for tribe walk"))
 
 
 if __name__ == "__main__":

@@ -52,6 +52,11 @@ def eat(unit, m, below=rules.EAT_BELOW):
                 code, r = api.act(unit, {"action": "eat", "item": f})
                 if code == 200:
                     api.wait_result(r)
+                    if r.get("me"):
+                        m.update(r["me"])
+                    elif isinstance(r.get("hp"), (int, float)):
+                        m["hp"] = r["hp"]
+                    bag[f] = max(0, bag.get(f, 1) - 1)
                     return True
         if bag.get("meat") and m.get("ap", 0) >= 4:
             return roast_and_eat(unit, bag["meat"])
