@@ -206,8 +206,8 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
                             time.sleep(5 if c0 == 200 else 30)
                             continue
                         MEADOW_FAIL[(unit, resource)] = time.time() + 600   # standing at the spot, nothing grows: give the meadow up for a while
-        # (the owner, 2026-11-05): ?????????????????
-        # ???????????????????? 19-32 ???? 21 ??????????????????????
+        # (the owner, 2026-11-05): 采矿与伐木安全范围限制
+        # safe_rings 之外的资源点由主号和领主前往，其他英雄回营
         if node and unit != LORD and resource != "ore" and node.get("ring") not in SAFE_RINGS:   # (copper ore lies in the highlands only: ordered)
             # (930 walked to a highlands stone node and fell there with 0 points: only the lord goes that far out)
             say("the nearest %s node (%s,%s) lies in the %s: not for this hero, going home" % (

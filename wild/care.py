@@ -8,16 +8,52 @@ import time
 from . import api, rules
 
 
+def cook_roast(unit, m, max_batch=None):
+    """Cook raw meat into roast (3 AP, 20s busy, batch of up to 10). Roast gives +25 food and +15 HP."""
+    bag = m.get("bag") or {}
+    meat = bag.get("meat") or 0
+    if meat <= 0 or m.get("ap", 0) < 3:
+        return 0
+    if max_batch is None:
+        max_batch = getattr(rules, "ROAST_BATCH", 10)
+    qty = min(meat, max_batch)
+    code, r = api.act(unit, {"action": "cook", "recipe": "roast", "qty": qty})
+    if code != 200:
+        api.debug("[%s] cook roast failed: %s %s" % (api.who(unit), code, str(r.get("error"))[:60]))
+        return 0
+    api.info("[%s] roasted %d meat -> roast" % (api.who(unit), qty))
+    api.wait_result(r)
+    fresh, _ = api.me(unit)
+    if fresh:
+        m.update(fresh)
+    else:
+        bag["meat"] = max(0, meat - qty)
+        bag["roast"] = bag.get("roast", 0) + qty
+    return qty
+
+
 def eat(unit, m, below=rules.EAT_BELOW):
     """Eat when food is under `below`, or when hurt and food leaves room: roast first, then bread, else roast some meat
     first (raw meat is never eaten). True if it ate."""
     bag = m.get("bag") or {}
-    if m["food"] < below or (m["hp"] < m["max_hp"] * 0.5 and m["food"] <= 85):
+    no_food = not bag.get("roast") and not bag.get("bread")
+    need_heal = m["hp"] < m["max_hp"] * rules.HEAL_BELOW and m["food"] <= 85
+    should_eat = m["food"] < below or need_heal
+
+    # If other foods are gone, and hero carries meat, roast it!
+    if no_food and bag.get("meat") and m.get("ap", 0) >= 4:
+        if should_eat or (m.get("ap", 0) >= 15 and m["food"] <= 80):
+            if cook_roast(unit, m) > 0:
+                bag = m.get("bag") or {}
+
+    if should_eat:
         for f in ("roast", "bread"):  # roast +25 food and +15 hp (the owner: first), bread +40
             if bag.get(f):
-                api.act(unit, {"action": "eat", "item": f})
-                return True
-        if bag.get("meat") and m.get("ap", 0) >= 3 + 5:
+                code, r = api.act(unit, {"action": "eat", "item": f})
+                if code == 200:
+                    api.wait_result(r)
+                    return True
+        if bag.get("meat") and m.get("ap", 0) >= 4:
             return roast_and_eat(unit, bag["meat"])
     return False
 
@@ -27,16 +63,19 @@ HEAL_ITEMS = ("bandage", "bread", "roast")   # the owner: bandage > bread > roas
 
 def has_heal_items(m, items=HEAL_ITEMS):
     bag = m.get("bag") or {}
-    return any(bag.get(i) for i in items)
+    return any(bag.get(i) for i in items) or bool(bag.get("meat") and m.get("ap", 0) >= 4)
 
 
 def heal_with_items(unit, m, below=rules.HEAL_BELOW, target=rules.HEAL_TO, items=HEAL_ITEMS):
-    """Hurt below `below` of the maximum: eat bread (about 25 health each, whatever the hunger) up to `target`. Returns the
-    number eaten (the forest squad only, the owner's order)."""
+    """Hurt below `below` of the maximum: eat bandage/bread/roast up to `target`. Returns the number eaten."""
     bag = m.get("bag") or {}
     if m["hp"] <= 0 or m["hp"] >= below * m["max_hp"]:
         return 0
     eaten = 0
+    # When other heal items (bandage, bread, roast) are gone, but hero carries meat: cook roast first
+    if not any(bag.get(i) for i in items) and bag.get("meat") and m.get("ap", 0) >= 4:
+        cook_roast(unit, m)
+        bag = m.get("bag") or {}
     for item in items:
         n = bag.get(item) or 0
         while m["hp"] < target * m["max_hp"] and n > 0 and eaten < 15:
@@ -53,7 +92,8 @@ def heal_with_items(unit, m, below=rules.HEAL_BELOW, target=rules.HEAL_TO, items
             api.wait_result(r)
         bag[item] = n
     if eaten:
-        api.debug("[%s] ate %d bandage/bread/roast: hp %d/%d (%d bandage, %d bread left)" % (api.who(unit), eaten, m["hp"], m["max_hp"], bag.get("bandage") or 0, bag.get("bread") or 0))
+        api.info("[%s] ate %d bandage/bread/roast: hp %d/%d (%d bandage, %d bread, %d roast left)" % (
+            api.who(unit), eaten, m["hp"], m["max_hp"], bag.get("bandage") or 0, bag.get("bread") or 0, bag.get("roast") or 0))
     return eaten
 
 
@@ -141,14 +181,18 @@ def share_bread(units, low=30):
 
 def roast_and_eat(unit, meat):
     """Cook roast from the meat (3 points a batch of up to 10, anywhere) and eat one. True if it ate."""
-    qty = min(meat, rules.ROAST_BATCH)   # a few at a time: the rest stays meat for the store and the squad
-    code, r = api.act(unit, {"action": "cook", "recipe": "roast", "qty": qty})
-    api.debug("[%s] roast %d meat: %s %s" % (api.who(unit), qty, code, "" if code == 200 else r.get("error")))
-    if code != 200:
+    m, _ = api.me(unit)
+    if not m or m.get("ap", 0) < 4:
         return False
-    api.wait_busy(api.me(unit)[0])
-    api.act(unit, {"action": "eat", "item": "roast"})
-    return True
+    bag = m.get("bag") or {}
+    if not bag.get("roast"):
+        if cook_roast(unit, m) <= 0 and not (m.get("bag") or {}).get("roast"):
+            return False
+    code, r = api.act(unit, {"action": "eat", "item": "roast"})
+    if code == 200:
+        api.wait_result(r)
+        return True
+    return False
 
 
 TALENT_ORDER = ("sharp", "tough", "hawk", "slayer", "stride", "bounty", "thrift", "green", "prospector", "mason", "salvager", "artisan")

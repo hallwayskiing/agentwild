@@ -117,7 +117,7 @@ def depositable_goods(m):
 
 def recover_goes_to_tribe(unit, m):
     """Recovery heads to the tribe when training quota is left today, or repair is due without dust.
-    (???????????????)"""
+    (纯残血且无训练无待修时留在营地休息)"""
     return bool(has_quota(unit) or care.repair_due(m, unit) and not (m.get("bag") or {}).get("dust", 0))
 
 
@@ -304,7 +304,7 @@ def recover(unit, force=False):
                 if not force and (not nav.can_reach_tribe(m) or m.get("ap", 0) < rules.TRIP_MIN_AP):
                     if m["hp"] >= m["max_hp"] * rules.HEALED:
                         return True
-                    state.note(unit, "????AP???")
+                    state.note(unit, "营地等待AP(%d/%d)" % (m.get("ap", 0), rules.TRIP_MIN_AP))
                     care.eat(unit, m)
                     time.sleep(30)
                     continue

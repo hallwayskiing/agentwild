@@ -93,7 +93,7 @@ def _update_stage():
         api.info("[land] a land of our kind is due in %d min: the main character and the lord wait for it (the tribe when worthwhile, else the camp)" % max(0, due // 60))
         from . import queue
         for u in cfg["units"]:
-            # (the owner, 2026-11-05): ??????????????hunting??????????????????????
+            # (the owner, 2026-11-05): 虚空腐化之地开启时暂停打怪以免抢怪冲突
             if queue.hunting(u):
                 queue.add(u, "land-stage", "resume-hunt", prio=9)
     elif STATE["stage"] and not want:
