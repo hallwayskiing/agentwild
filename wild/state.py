@@ -100,5 +100,5 @@ def update(unit, m, squad=""):
         h["note"], h["note_at"] = (n if n else ("", 0))
         h["lease"] = lease.holder(unit)
         t = _targets.get(unit or 0)
-        h["target"] = {"x": t[0], "y": t[1], "label": t[2], "age": time.time() - t[3]} if t else None
+        h["target"] = {"x": t[0], "y": t[1], "label": t[2], "at": t[3], "age": round(time.time() - t[3], 1)} if t else None
         _write()

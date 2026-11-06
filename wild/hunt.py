@@ -164,7 +164,10 @@ class Squad:
                 continue
             k = step / far
             to = [int(round(m["x"] + (cx - m["x"]) * k)), int(round(m["y"] + (cy - m["y"]) * k))]
+            state.target(u, to[0], to[1], "巡逻")
+            state.note(u, "巡逻向中心点")
             code, r = api.act(u, {"action": "move", "to": to, "until_there": True})
+            state.clear_target(u)
             self.say("DEBUG", "%s finds nothing: drifts toward the centre %s (%d tiles away) to %s: %s %s" % (
                 api.who(u), self.center, far, to, code, "" if code == 200 else str(api.clean(r))[:100]))
 
@@ -443,6 +446,12 @@ class Squad:
         fin = ready[fin_id]
         self.fought.add(fin_id)   # (its talent points are looked at once the fight is over: run())
         stand = [t["x"] - 1, t["y"]]
+        t_desc = what(t)
+        state.target(fin_id, t["x"], t["y"], t_desc)
+        state.note(fin_id, "交战 %s" % t_desc)
+        for u, _ in team:
+            state.target(u, t["x"], t["y"], t_desc)
+            state.note(u, "协助 %s" % t_desc)
         self.say("DEBUG", "finisher %s L%s xp %s/%s hp %s ap %s -> %s hp %s at (%s,%s); helpers %s" % (
             api.who(fin_id), fin["level"], fin["xp"], fin["xp_next"], fin["hp"], fin["ap"], what(t),
             t["hp"], t["x"], t["y"], [u for u, _ in team]))
@@ -456,11 +465,17 @@ class Squad:
         if not there:
             self.gone[t["id"]] = time.time()
             self.say("DEBUG", "%s #%s is gone: aborting before the others set out" % (what(t), t["id"]))
+            state.clear_target(fin_id)
+            for u, _ in team:
+                state.clear_target(u)
             return
         t["hp"] = there[0].get("hp") or there[0].get("max_hp") or t.get("hp") or bestiary.hp_at(t.get("kind"), t.get("level", 1), bool(t.get("elite")))
         if self.feasible(t, fin_id, ready) is None and t["hp"] > 45:
             self.skipped[t["id"]] = time.time()
             self.say("WARNING", "%s #%s has more health than seen (%s): letting it go" % (what(t), t["id"], t["hp"]))
+            state.clear_target(fin_id)
+            for u, _ in team:
+                state.clear_target(u)
             return
         for u, _m in team:
             api.act(u, {"action": "move", "to": stand})
@@ -541,6 +556,8 @@ class Squad:
             else:
                 self.skipped[t["id"]] = time.time()
                 self.say("WARNING", "%s not finished (code %s, creature hp %s): let go" % (what(t), code, hp))
+            state.clear_target(fin_id)
+            state.note(fin_id, "狩猎待命(%s)" % self.name)
             return
         if not killed:
             fin2 = self.fresh(fin_id)
@@ -588,6 +605,11 @@ class Squad:
                 # not a bug: the creature was slain or walked off while we came (4xx), or the server did not answer (0)
                 self.say("WARNING" if code in (0, 202) or code >= 500 else "DEBUG",
                          "finisher %s: the attack did not go through (%s %s)" % (api.who(fin_id), code, json.dumps(api.clean(r))[:140]))
+            state.clear_target(fin_id)
+            state.note(fin_id, "狩猎待命(%s)" % self.name)
+            for u in active:
+                state.clear_target(u)
+                state.note(u, "狩猎待命(%s)" % self.name)
 
     def run(self):
         """Hunt for ever (the goals only decide who finishes first)."""

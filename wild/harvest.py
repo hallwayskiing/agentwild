@@ -115,7 +115,6 @@ def kill(unit, m, weak):
 
 
 def _log(unit, text, level="DEBUG"):
-    state.note(unit, text)
     api.log(level, "[harvest %s] %s" % (api.who(unit), text))
 
 
@@ -242,6 +241,17 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
         wt = r.get("walking_to") if isinstance(r, dict) else None
         if wt:
             state.target(unit, wt[0], wt[1], resource)
+        else:
+            state.clear_target(unit)
+        res_zh = {"ore": "铜矿", "wood": "木材", "stone": "石头"}.get(resource, resource)
+        if code == 200:
+            got = (r.get("got") or {}).get(resource) if isinstance(r, dict) else None
+            got_str = (" (+%s)" % got) if got else ""
+            state.note(unit, "采集 %s%s (包内 %d/%d)" % (res_zh, got_str, have + (got or 0), quota))
+        elif code == 429:
+            state.note(unit, "采集 %s 等待AP/冷却" % res_zh)
+        else:
+            state.note(unit, "采集 %s 中" % res_zh)
         _log_level = "INFO" if code == 200 else "DEBUG"
         _log(unit, "%s (have %d/%d): %s %s" % (resource, have, quota, code, str(api.clean(r))[:200]), level=_log_level)
         if code == 400 and r.get("closest"):   # "no way there within 120 points": walk to the nearest tile the search reaches, then again
@@ -369,7 +379,9 @@ def run(unit, own):
                     code, r = api.act(unit, {"action": "move", "to": [tx, ty], "until_there": True})
                     if code == 400 and r.get("closest"):
                         code, r = api.act(unit, {"action": "move", "to": r["closest"], "until_there": True})
-                    state.note(unit, "去集合点铜矿 (%s,%s): %s %s" % (tx, ty, code, "" if code == 200 else str(r.get("error"))[:60]))
+                    state.clear_target(unit)
+                    state.note(unit, "前往铜矿集合点 (%s,%s)" % (tx, ty))
+                    _log(unit, "去集合点铜矿 (%s,%s): %s %s" % (tx, ty, code, "" if code == 200 else str(r.get("error"))[:60]))
                     time.sleep(20 if code == 200 else 90)
                     continue
             if ensure_tool(unit, m, own):   # the right, whole tool before any swing
@@ -381,7 +393,8 @@ def run(unit, own):
             if own != "ore":
                 state.clear_target(unit)   # (a stale copper target stayed on the board after the order changed)
             state.job(unit, own)
-            state.note(unit, "采集 %s" % own)
+            res_zh = {"ore": "铜矿", "wood": "木材", "stone": "石头"}.get(own, own)
+            state.note(unit, "采集 %s" % res_zh)
             harvest(unit, own, quota=have + LOAD, chain=False, until=time.time() + 25 * 60)
         except Exception as e:
             _log(unit, "round error %r" % e)

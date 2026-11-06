@@ -33,6 +33,18 @@ def title(rec):
 
 
 _xp = {"i": -1}   # unit -> (xp, xp_next, ring) from its last own read
+RING_NAMES = ["camp", "meadow", "forest", "highlands", "ashlands", "ruins"]
+RING_RADII = [30, 72, 128, 180, 224, 252]
+
+
+def ring_of(x, y):
+    if x is None or y is None:
+        return "camp"
+    r = ((x - 256) ** 2 + (y - 256) ** 2) ** 0.5
+    for edge, name in zip(RING_RADII, RING_NAMES):
+        if r <= edge:
+            return name
+    return "ruins"
 
 
 def live():
@@ -49,13 +61,13 @@ def live():
     w = (m.get("worn") or {}).get("weapon") or {}
     offhand = (m.get("worn") or {}).get("offhand") or {}
     out[0] = {"unit": 0, "level": m.get("level"), "xp": m.get("xp"), "xp_next": m.get("xp_next"), "hp": m.get("hp"),
-              "max_hp": m.get("max_hp"), "ap": m.get("ap"), "ap_max": m.get("ap_max"), "ring": m.get("ring"), "x": m.get("x"),
+              "max_hp": m.get("max_hp"), "ap": m.get("ap"), "ap_max": m.get("ap_max"), "ring": ring_of(m.get("x"), m.get("y")), "x": m.get("x"),
               "y": m.get("y"), "coins": m.get("coins"), "bread": (m.get("bag") or {}).get("bread"), "items": items(m.get("bag") or {}), "mats": mats(m.get("bag") or {}), "weapon": w.get("base"), "offhand": offhand.get("base"), "offhand_level": offhand.get("level"), "offhand_dur": offhand.get("durability"), "offhand_max": offhand.get("durability_max"), "title": title(m.get("hero") or {}), "at": now}
     for u in r["me"].get("units") or []:
         bag = u.get("bag") or {}
         at = u.get("at") or [None, None]
         out[u["hero"]] = {"unit": u["hero"], "level": u.get("level"), "hp": u.get("hp"), "max_hp": u.get("max_hp"), "ap": u.get("ap"),
-                          "ap_max": u.get("ap_max"), "x": at[0], "y": at[1], "coins": u.get("coins"), "bread": bag.get("bread"), "items": items(bag), "mats": mats(bag), "title": title(roles.get(u["hero"]) or {}), "at": now}
+                          "ap_max": u.get("ap_max"), "x": at[0], "y": at[1], "ring": ring_of(at[0], at[1]), "coins": u.get("coins"), "bread": bag.get("bread"), "items": items(bag), "mats": mats(bag), "title": title(roles.get(u["hero"]) or {}), "at": now}
     # the list carries no experience: one more hero's own read per refresh (so each hero's xp is at most ~2 minutes old)
     ids = sorted(k for k in out if k)
     if ids:
@@ -63,10 +75,10 @@ def live():
         u = ids[_xp["i"] % len(ids)]
         code, r2 = api.call("GET", "/world/me?unit=%d" % u)
         if code == 200:
-            _xp[u] = (r2["me"].get("xp"), r2["me"].get("xp_next"), r2["me"].get("ring"), r2["me"].get("level"))
+            _xp[u] = (r2["me"].get("xp"), r2["me"].get("xp_next"), r2["me"].get("level"))
     for u, v in _xp.items():
         if u in out:
-            out[u].update(xp=v[0], xp_next=v[1], ring=v[2], xp_level=v[3])
+            out[u].update(xp=v[0], xp_next=v[1], xp_level=v[2])
     _cache["at"], _cache["live"] = now, out
     return out
 
@@ -100,6 +112,61 @@ def track(h):
     h["xp_gain"], h["xp_win"] = s["cum"] - base[1], int(now - base[0])
 
 
+def clean_note(note):
+    if not note or not isinstance(note, str):
+        return ""
+    # Strip raw python/json dicts: e.g. "ore (have 150/1143): 200 {'success': True, ..."
+    if "{" in note and any(k in note for k in ("success", "times", "warning", "error", "action")):
+        m = re.match(r"^([a-zA-Z_]+)\s*\((have\s+\d+/\d+)\)", note)
+        if m:
+            res_zh = {"ore": "铜矿", "wood": "木材", "stone": "石头"}.get(m.group(1), m.group(1))
+            return "采集 %s (%s)" % (res_zh, m.group(2))
+        return "工作中"
+    # Strip raw status code prefix e.g. "200 "
+    note = re.sub(r"^\d{3}\s+", "", note.strip())
+    return note
+
+
+def task_zh(task_str, squad_zh=""):
+    if not task_str:
+        return ("野外狩猎 · %s" % squad_zh) if squad_zh else "待命"
+    parts = task_str.strip().split()
+    is_force = False
+    if parts and parts[0] == "force":
+        is_force = True
+        parts = parts[1:]
+    if not parts:
+        return "强行任务" if is_force else "待命"
+    act = parts[0]
+    arg = parts[1] if len(parts) > 1 else None
+    res_names = {"ore": "铜矿", "wood": "木材", "stone": "石头", "hide": "兽皮", "herb": "草药"}
+
+    if act in ("harvest", "gather"):
+        res = res_names.get(arg, arg or "资源")
+        txt = "采集 %s" % res
+    elif act == "hunt":
+        txt = ("野外狩猎 · %s" % squad_zh) if squad_zh else "野外狩猎"
+    elif act in ("recover", "rest"):
+        txt = "休整回血"
+    elif act in ("home", "go-home"):
+        txt = "返回营地"
+    elif act in ("train", "training"):
+        txt = "部落训练"
+    elif act in ("deposit", "store"):
+        txt = "存仓"
+    elif act in ("walk-tribe", "tribe"):
+        txt = "前往部落"
+    elif act == "repair-tribe":
+        txt = "部落修整"
+    elif act == "eat":
+        txt = "进食"
+    else:
+        txt = act
+    if is_force:
+        txt += " (强行)"
+    return txt
+
+
 def snapshot():
     from wild import rules
     try:
@@ -108,15 +175,40 @@ def snapshot():
         heroes, meta = raw["heroes"], raw.get("meta") or {}
     except (OSError, ValueError, KeyError):
         heroes, meta = {}, {}
+    try:
+        with open(os.path.join(HERE, "queue.json"), encoding="utf-8") as f:
+            qdata = json.load(f)
+    except (OSError, ValueError):
+        qdata = {}
     for k, h in live().items():   # the fresh request wins over the worker's snapshot (xp, ring, notes and targets stay from it)
         heroes[str(k)] = dict(heroes.get(str(k)) or {}, **{a: b for a, b in h.items() if b is not None})
     out = []
+    now = time.time()
     for h in sorted(heroes.values(), key=lambda h: (h["unit"] not in (0, 928), h["unit"])):
         if h.get("squad") not in rules.SQUADS:
             unit = h["unit"] or None
             h["squad"] = next((k for k, v in rules.SQUADS.items() if unit in v["members"] and not v.get("land")), "")
+        sq_zh = rules.SQUADS.get(h["squad"], {}).get("zh", h.get("squad", ""))
         track(h)
-        out.append(dict(h, name=NAMES.get(h["unit"], str(h["unit"]))))
+        h["name"] = NAMES.get(h["unit"], str(h["unit"]))
+        # Compute ring deterministically from coordinates
+        h["ring"] = ring_of(h.get("x"), h.get("y"))
+        # Parse task from queue.json
+        qinfo = qdata.get(str(h["unit"])) or {}
+        running = qinfo.get("running")
+        h["queue_task"] = running or ("hunt" if h.get("squad") else "")
+        h["queue_zh"] = task_zh(running, sq_zh)
+        # Clean up note
+        h["note"] = clean_note(h.get("note"))
+        # Process target
+        tgt = h.get("target")
+        if tgt and isinstance(tgt, dict):
+            tgt_at = tgt.get("at")
+            if tgt_at:
+                tgt["age"] = round(now - tgt_at, 1)
+            if tgt.get("age", 0) > 180:
+                h["target"] = None
+        out.append(h)
     try:
         with open(os.path.join(HERE, "wild.log"), "rb") as f:
             f.seek(0, 2)

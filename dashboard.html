@@ -36,7 +36,10 @@ tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a17
 .job{font-weight:600}.note{color:var(--mut);font-size:12px;max-width:340px}
 .mats span{display:inline-block;margin:0 6px 2px 0;padding:0 6px;border-radius:5px;background:#232a35;font-size:12px}
 .mats span.dust{background:#282038;color:#d6c1ff;border:1px solid #523f78}
-.tgt{color:#7fc8ff;font-weight:550}.low{color:#ff9a9a}.warn{color:#f2b84b}.mut{color:var(--mut)}
+.tgt{color:#7fc8ff;font-weight:550;white-space:nowrap}.tgt small{color:#a5d6ff}.loc-ring{font-weight:600}
+.task-pill{display:inline-block;padding:1px 6px;border-radius:4px;background:#1e293b;color:#7dd3fc;font-size:11px;font-weight:600;border:1px solid #38bdf8;white-space:nowrap;margin-bottom:3px}
+.act{font-size:12px;color:var(--tx);font-weight:500;line-height:1.35}
+.low{color:#ff9a9a}.warn{color:#f2b84b}.mut{color:var(--mut)}
 .feed{height:300px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}
 .feed div{padding:1px 6px;border-left:2px solid transparent;word-break:break-word}
 .feed .kill{border-color:var(--xp);color:#b8f0d3}.feed .bad{border-color:var(--hp);color:#ffb0b0;background:#2a1717}
@@ -64,6 +67,11 @@ function row(h,now){
  const job=h.job?`<span class="job">${RES[h.job]||h.job}</span> · `:'';
  const nage=h.note_at?Math.round(now-h.note_at):0;
  const fd=h.food;
+ const tgtHtml=(h.target&&(!h.target.age||h.target.age<180))?`<div class=tgt>→ ${h.target.x}, ${h.target.y} <small>(${esc(RES[h.target.label]||h.target.label)})</small></div>`:'<small class=mut>无目标</small>';
+ const taskHtml=h.queue_zh?`<span class="task-pill">${esc(h.queue_zh)}</span><br>`:'';
+ const actHtml=`<div class="act">${esc(h.note||'待命')}</div>`;
+ const extra=[h.lease?('租约: '+esc(h.lease)):'',nage?(nage+'s 前'):''].filter(Boolean).join(' · ');
+ const leaseHtml=extra?`<div class=note>${extra}</div>`:'';
  return `<tr class="${age>240?'old':''} ${h.down?'down':''}">
  <td><span class=nm>${h.name}</span><br><span class=pill style="--c:${c}">${SQ[h.squad]||h.squad||'-'}</span></td>
  <td>${h.title||'-'}</td>
@@ -73,8 +81,8 @@ function row(h,now){
  <td><div class="num ${low?'low':''}">${h.hp}<small> / ${h.max_hp}</small></div>${bar('hp',h.hp,h.max_hp)}</td>
  <td><div class=num>${h.ap}<small> / ${h.ap_max||'-'}</small></div>${bar('ap',h.ap,h.ap_max||320)}</td>
  <td><div class="num ${fd!=null&&fd<40?'warn':''}">${fd==null?'-':fd}<small> / 100</small></div>${bar('fd',fd||0,100)}</td>
- <td>${RING[h.ring]||h.ring} <small class=mut>${h.x}, ${h.y}</small><br>${h.target?`<span class=tgt>→ ${h.target.x}, ${h.target.y} <small>${RES[h.target.label]||h.target.label}</small></span>`:'<small class=mut>无目标</small>'}</td>
- <td>${job}${esc(h.note||'—')}<div class=note>${h.lease?'租约: '+h.lease:''} ${nage?'· '+nage+'s 前':''}</div></td>
+ <td><span class=loc-ring>${RING[h.ring]||h.ring||'-'}</span> <small class=mut>(${h.x!=null?h.x:'-'}, ${h.y!=null?h.y:'-'})</small><br>${tgtHtml}</td>
+ <td>${taskHtml}${actHtml}${leaseHtml}</td>
  <td class=mats>${mats}</td>
  <td>${h.weapon?h.weapon+' L'+h.weapon_level:'<span class=low>无武器</span>'}${h.offhand?'<br><small class=mut>副手 '+esc(h.offhand)+' L'+h.offhand_level+' '+h.offhand_dur+'/'+h.offhand_max+'</small>':''}<br><small class=mut>${h.tool?h.tool+' '+h.tool_dur+'/'+h.tool_max:'无工具'} · 战力 ${h.power??'-'}</small></td>
  <td>🪙 ${h.coins}<br><small class=mut>${foodText(h)}</small></td></tr>`}
