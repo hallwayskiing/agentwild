@@ -84,7 +84,7 @@ def has_quota(unit):
 def train_once(unit):
     code, r = api.act(unit, {"action": "train"})
     t = r.get("today") or {}
-    if code == 200 and t and t.get("trained", 0) >= t.get("most", 1 << 30):
+    if code in (200, 202) and t and t.get("trained", 0) >= t.get("most", 1 << 30):
         QUOTA_DONE[unit] = today()
     elif code in (400, 403, 409) and any(s in str(r.get("error", "")).lower() for s in ("daily", "quota", "limit", "today")):
         QUOTA_DONE[unit] = today()
@@ -452,12 +452,22 @@ def visit(unit, train=0, heal=False, patience=None, max_minutes=25, force=False,
             api.wait_busy(fresh)
             code, r = train_once(unit)
             t = r.get("today") or {}
-            if code == 200:
+            if code in (200, 202):
                 trained += 1
+                if code == 202:
+                    api.wait_result(r)
+            elif code == 0:
+                api.debug("[%s] train timeout (code 0): retrying in 10s" % api.who(unit))
+                time.sleep(10)
+                continue
+            elif code in (400, 429) and any(w in str(r.get("error", "")).lower() for w in ("point", "ap", "busy")):
+                api.debug("[%s] train waiting for AP/busy (%s %s)" % (api.who(unit), code, r.get("error")))
+                time.sleep(30)
+                continue
             elif not has_quota(unit):
                 pass  # the server confirmed that today's training is exhausted
             else:
-                api.warning("[%s] training failed (%s): stopping this visit" % (api.who(unit), code))
+                api.warning("[%s] training failed (%s %s): stopping this visit" % (api.who(unit), code, str(r.get("error"))[:60]))
                 return False
             state.note(unit, "部落训练 %s/%s" % (t.get("trained"), t.get("most")))
             api.debug("[%s] trains at the tribe (hp %s/%s): %s %s/%s" % (api.who(unit), m["hp"], m["max_hp"], code, t.get("trained"), t.get("most")))
