@@ -556,6 +556,7 @@ TRIBE_TRAINING = (342, 266)
 TRIBE_WORKBENCH = (342, 270)
 CAMP_WORKBENCH = (258, 262)
 SALVAGE_PLAIN_GEAR = True   # the owner (2026-11-05): at camp or tribe, auto salvage all plain gear; keep >=1 pickaxe and >=1 axe in bag besides worn
+SALVAGE_RUNED_BELOW_LEVEL = 10  # the owner (2026-11-05): auto salvage runed gear below level 10
 
 
 

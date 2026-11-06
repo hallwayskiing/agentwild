@@ -76,6 +76,22 @@ class AutoSalvageCandidateTests(unittest.TestCase):
         cand_ids = [c["id"] for c in cands]
         self.assertEqual(cand_ids, [42])
 
+    def test_salvages_runed_gear_below_level_10_and_keeps_level_10_plus(self):
+        m = {
+            "worn": {},
+            "gear_bag": [
+                piece(51, "blade", "runed", level=8),       # <10: salvage
+                piece(52, "helm", "runed", level=9),        # <10: salvage
+                piece(53, "chest", "runed", level=10),      # >=10: keep!
+                piece(54, "greaves", "runed", level=12),    # >=10: keep!
+                piece(55, "boots", "treasured", level=5),   # treasured: keep!
+                piece(56, "dagger", "plain", level=12),     # plain: salvage regardless of level
+            ]
+        }
+        cands = care.plain_salvage_candidates(m)
+        cand_ids = sorted([c["id"] for c in cands])
+        self.assertEqual(cand_ids, [51, 52, 56])
+
 
 if __name__ == "__main__":
     unittest.main()

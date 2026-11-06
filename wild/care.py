@@ -404,13 +404,12 @@ def is_axe(item):
 
 def plain_salvage_candidates(m):
     """Items in gear_bag that can be salvaged under the owner's rule (2026-11-05):
-    - Must be rarity 'plain' (white gear)
+    - Rarity 'plain' (white gear) if rules.SALVAGE_PLAIN_GEAR
+    - Rarity 'runed' (blue gear) with level < rules.SALVAGE_RUNED_BELOW_LEVEL (10级以下符刻装备)
     - Must not be unidentified
     - Must preserve at least 1 pickaxe and at least 1 axe in the bag (besides whatever is worn),
       prioritizing highest rarity/level/durability to keep.
     """
-    if not rules.SALVAGE_PLAIN_GEAR:
-        return []
     gear_bag = list(m.get("gear_bag") or [])
     if not gear_bag:
         return []
@@ -436,12 +435,17 @@ def plain_salvage_candidates(m):
         protected_ids.add(axes[0]["id"])
 
     candidates = []
+    salvage_runed_below = getattr(rules, "SALVAGE_RUNED_BELOW_LEVEL", 10)
     for g in gear_bag:
         if g.get("id") in protected_ids:
             continue
         if g.get("unidentified"):
             continue
-        if g.get("rarity") == "plain":
+        rarity = g.get("rarity")
+        lvl = g.get("level", 0) or 0
+        if rules.SALVAGE_PLAIN_GEAR and rarity == "plain":
+            candidates.append(g)
+        elif salvage_runed_below and rarity == "runed" and lvl < salvage_runed_below:
             candidates.append(g)
     return candidates
 
@@ -477,8 +481,8 @@ def auto_salvage(unit, m):
         got = r.get("got") or {}
         if code == 200:
             salvaged_any = True
-            api.info("[%s] salvaged plain %s L%s (#%s): got %s" % (
-                api.who(unit), g.get("base"), g.get("level"), g["id"], got or "materials"))
+            api.info("[%s] salvaged %s %s L%s (#%s): got %s" % (
+                api.who(unit), g.get("rarity"), g.get("base"), g.get("level"), g["id"], got or "materials"))
             if "gear_bag" in m:
                 m["gear_bag"] = [x for x in m["gear_bag"] if x.get("id") != g["id"]]
             for k, v in got.items():
