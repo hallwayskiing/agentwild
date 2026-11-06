@@ -691,7 +691,7 @@ AUTO_RESTOCK_BANDAGE = False     # off (the owner, 2026-11-05): bandages are nev
 
 
 
-EAT_BELOW = 30                   # eat under this hunger (or when hurt and there is room); roast first, then bread
+EAT_BELOW = 0                    # eat under or at this hunger (0: eat only when hunger drops to 0); roast first, then bread
 
 
 
@@ -1179,7 +1179,7 @@ def describe():
 
 
 
-        "【吃饭】饱食<%d 或受伤时吃：先烤肉，再面包；只剩生肉就先烤 %d 块（3 行动点）；不自动买肉" % (EAT_BELOW, ROAST_BATCH),
+        "【吃饭】饱食≤%d（掉完再吃）或受伤时吃：先烤肉，再面包；只剩生肉就先烤 %d 块（3 行动点）；不自动买肉" % (EAT_BELOW, ROAST_BATCH),
 
 
 

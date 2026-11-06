@@ -33,16 +33,16 @@ def cook_roast(unit, m, max_batch=None):
 
 
 def eat(unit, m, below=rules.EAT_BELOW):
-    """Eat when food is under `below`, or when hurt and food leaves room: roast first, then bread, else roast some meat
-    first (raw meat is never eaten). True if it ate."""
+    """Eat when food is under or at `below` (default 0: eat only when food drops to 0), or when hurt and food leaves room:
+    roast first, then bread, else roast some meat first (raw meat is never eaten). True if it ate."""
     bag = m.get("bag") or {}
     no_food = not bag.get("roast") and not bag.get("bread")
     need_heal = m["hp"] < m["max_hp"] * rules.HEAL_BELOW and m["food"] <= 85
-    should_eat = m["food"] < below or need_heal
+    should_eat = m["food"] <= below or need_heal
 
     # If other foods are gone, and hero carries meat, roast it!
     if no_food and bag.get("meat") and m.get("ap", 0) >= 4:
-        if should_eat or (m.get("ap", 0) >= 15 and m["food"] <= 80):
+        if should_eat or (m.get("ap", 0) >= 15 and m["food"] <= 20):
             if cook_roast(unit, m) > 0:
                 bag = m.get("bag") or {}
 
