@@ -72,7 +72,7 @@ def hop(unit, m, final, stops, around=None, force=False):
             if target is None:
                 api.warning("[%s] strong creature on the way to %s: waiting" % (unit, stop))
                 return 0
-            api.info("[%s] round a strong creature: via %s" % (unit, target))
+            api.debug("[%s] round a strong creature: via %s" % (unit, target))
         code, _ = _move(unit, m, target)
         if code != 400:
             return code
@@ -138,6 +138,37 @@ class Bailed(Exception):
     """A hard push toward the tribe took too much damage: the hero went back to the camp."""
 
 
+def walk_home(unit, until=None):
+    """Walk to the camp in short, danger-checked hops when the home fee cannot be paid."""
+    target = (256, 256)
+    while True:
+        if until and until():
+            return False
+        m, around = api.me(unit)
+        if not m:
+            time.sleep(15)
+            continue
+        if m.get("ring") == "camp":
+            return True
+        if m.get("hp", 0) <= 0 or m.get("down_until"):
+            time.sleep(60)
+            continue
+        danger.observe(m, around)
+        api.wait_busy(m)
+        if m.get("ap", 0) < 12:
+            time.sleep(25)
+            continue
+        distance = dist(m, target)
+        step = (round(m["x"] + (target[0] - m["x"]) * min(8, distance) / distance),
+                round(m["y"] + (target[1] - m["y"]) * min(8, distance) / distance))
+        if danger.bad_zone(step[0], step[1], m["level"]):
+            api.warning("[%s] homeward step %s is dangerous; waiting" % (api.who(unit), step))
+            time.sleep(30)
+            continue
+        code = hop(unit, m, step, (), around, force=False)
+        time.sleep(30 if code in (0, 400, 402, 429) else 3)
+
+
 def _fall_report(tag, m, around):
     near = sorted((max(abs(t["x"] - m["x"]), abs(t["y"] - m["y"])), t.get("kind"), t.get("level"), t["x"], t["y"])
                   for t in (around or {}).get("things") or [] if t.get("type") == "creature" and t.get("attacks"))
@@ -177,7 +208,7 @@ def walk(unit, final, tol=2, stops=(), label=None, min_hp=0, patience=None, forc
         fell = False
         if bail and m["hp"] < m["max_hp"] * bail and not at_tribe(m):   # a push: hurt on the road, back to the camp
             api.warning("[%s] hurt on the road (hp %s/%s): back to the camp" % (tag, m["hp"], m["max_hp"]))
-            api.act(unit, {"action": "home"})
+            api.act(unit, {"action": "home", "why": "hurt on the road (hp %s/%s): back to the camp" % (m["hp"], m["max_hp"])})
             raise Bailed(tag)
         if dist(m, final) <= tol or (land_ok and at_tribe(m)):
             if land_ok:
@@ -191,9 +222,8 @@ def walk(unit, final, tol=2, stops=(), label=None, min_hp=0, patience=None, forc
             continue
         if dist(m, final) < 45 or (m["ring"] == "highlands" and dist(m, final) < 70 and m["x"] > 190):
             # on the way: hop. A strong creature in the way that cannot be gone round: if it is near us, slip aside;
-            # otherwise wait where we stand (every read refreshes the danger memory, so one that wandered off frees the
-            # way) and after five waits in a row go through
-            if hop(unit, m, final, stops, a, force=force or stuck >= 5) == 0:
+            # otherwise wait where we stand until the danger clears or the owner explicitly forces the order.
+            if hop(unit, m, final, stops, a, force=force) == 0:
                 if danger.strong_near(m["x"], m["y"], m["level"], rules.AGGRO_RANGE + 1) and step_away(unit, m, final, a):
                     stuck = 0
                     time.sleep(8)
@@ -203,7 +233,10 @@ def walk(unit, final, tol=2, stops=(), label=None, min_hp=0, patience=None, forc
             else:
                 stuck = 0
         elif m["ring"] != "camp":
-            api.act(unit, {"action": "home"})
+            code, _ = api.act(unit, {"action": "home", "why": "the walk to %s starts from the camp" % (final,)})
+            if code == 402:
+                if not walk_home(unit, until=until):
+                    raise RouteClosed(tag)
         else:
             if land_ok and not force and not route.safe(
                     [r for r in ("highlands", "forest") if r in open_waypoints(m)] or ("forest",)):
@@ -226,12 +259,12 @@ def walk_to_tribe(unit, min_hp=0, patience=None, force=False, bail=None, until=N
     m, _ = api.me(unit)
     rings = [r for r in ("forest",) if r in open_waypoints(m or {})] or ["forest"]
     name, a = route.best_entry(rings)
-    if a["clearance"] < route.SAFE and not force:
+    if rules.ROUTE_SAFETY and a["clearance"] < route.SAFE and not force:
         api.warning("[%s] every way into the land is guarded (best: %s, %s tiles): waiting" % (unit, name, a["clearance"]))
         raise RouteClosed(unit)
     chain = route.CHAINS[name]
-    api.info("[%s] into the land by the %s way (clearance %s)" % (unit, name, a["clearance"]))
-    return walk(unit, chain[-1], 2, stops=chain[1:-1], min_hp=min_hp, patience=patience, force=force, bail=bail,
+    api.debug("[%s] into the land by the %s way (clearance %s)" % (unit, name, a["clearance"]))
+    return walk(unit, chain[-1], 2, stops=chain[1:-1], min_hp=min_hp, patience=patience, force=force or not rules.ROUTE_SAFETY, bail=bail,
                 until=until, land_ok=True)
 
 
@@ -243,7 +276,7 @@ def scout(unit, ring="forest", deep=False):
     if not m or m["hp"] < m["max_hp"] * 0.6 or m["ap"] < 25 or ring not in open_waypoints(m):
         return False
     if m["ring"] != "camp":
-        api.act(unit, {"action": "home"})
+        api.act(unit, {"action": "home", "why": "scouting the %s: the way out starts from the camp" % ring})
         time.sleep(3)
     api.act(unit, {"action": "travel", "to": ring})
     time.sleep(3)
@@ -258,6 +291,6 @@ def scout(unit, ring="forest", deep=False):
             if step == 3 and deep:   # three tiles further in, to see what the waypoint's view misses
                 api.act(unit, {"action": "move", "to": [m["x"] + 3, m["y"] + 1]})
         time.sleep(4)
-    api.act(unit, {"action": "home"})
+    api.act(unit, {"action": "home", "why": "scouted the %s: back to the camp" % ring})
     route.record()
     return True

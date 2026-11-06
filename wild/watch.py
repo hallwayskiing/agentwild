@@ -43,9 +43,9 @@ def check():
     diff = [l for l in difflib.unified_diff(old.splitlines(), new.splitlines(), "old", "new", lineterm="", n=0)
             if l[:1] in "+-" and l[:3] not in ("+++", "---")]
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    api.warning("[SKILL UPDATE] skill.md changed at %s: %d lines differ (%d bytes -> %d)" % (stamp, len(diff), len(old), len(new)))
+    api.info("[skill] skill.md changed at %s: %d lines differ (%d bytes -> %d)" % (stamp, len(diff), len(old), len(new)))
     for l in diff[:SHOWN]:
-        api.warning("[SKILL UPDATE]   " + l[:200])
+        api.debug("[skill]   " + l[:200])
     with open(CHANGES, "a", encoding="utf-8") as f:
         f.write("== %s ==\n%s\n\n" % (stamp, "\n".join(diff)))
     with open(LOCAL, "w", encoding="utf-8", newline="") as f:

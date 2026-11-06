@@ -28,7 +28,7 @@ def _priority(unit, m):
 
 
 def _usable(g, m):
-    return not g.get("unidentified") and g["level"] <= m["level"] + 2
+    return not g.get("unidentified") and g["level"] <= m["level"] + 2 and care.compatible_hands(g, m)
 
 
 def survey(members):
@@ -66,7 +66,8 @@ def plan(heroes):
                 for x in list(left):
                     if cur and x[1]["id"] == cur["id"]:
                         left.remove(x)
-            best = next((x for x in left if x[0] >= 0 and _usable(x[1], m)), None)
+            best = next((x for x in left if x[0] >= 0 and _usable(x[1], m)
+                         and (rules.AUTO_GIVE_MAIN or u is not None or x[2] is None)), None)
             if best is None:
                 keep_own()
                 continue
@@ -108,6 +109,8 @@ def meet(giver, receiver, tries=3):
 
 def hand_over(giver, receiver, items, heroes):
     """Between two heroes that stand close (rules.GEAR_REACH): take off, give, put on. Nobody walks to meet."""
+    if receiver is None and giver is not None and not rules.AUTO_GIVE_MAIN:
+        return False
     g, r = heroes[giver], heroes[receiver]
     if g["hp"] <= 0 or r["hp"] <= 0 or _dist(g, r) > rules.GEAR_REACH:
         return False
@@ -118,15 +121,35 @@ def hand_over(giver, receiver, items, heroes):
         for item, worn_slot in items:
             if item.get("slot") in rules.LOCKED_SLOTS.get(giver, ()):   # belt and braces: a locked slot never leaves its owner
                 continue
+            if item.get("slot") in ("weapon", "offhand"):
+                recipient, _ = api.me(receiver)
+                if not recipient or not _usable(item, recipient):
+                    api.debug("[gear] %s cannot currently equip %s; transfer skipped" % (api.who(receiver), item.get("base")))
+                    return False
+            fresh, _ = api.me(giver)
+            if not fresh:
+                return False
+            api.wait_busy(fresh)
             if worn_slot:
-                api.act(giver, {"action": "unequip", "slot": worn_slot})
-            code, res = api.act(giver, {"action": "give", "to": "main" if receiver is None else receiver, "item": item["id"]})
-            api.info("[gear] %s %s L%s: %s -> %s: %s %s" % (item["base"], item.get("rarity"), item["level"], api.who(giver),
+                code, res = api.act(giver, {"action": "unequip", "slot": worn_slot, "wait": False})
+                if code != 200:
+                    if code == 409 and "changed lately" in (res.get("error") or ""):
+                        api.debug("[gear] slot %s changed lately (cooldown): %s %s" % (worn_slot, code, res.get("error") or ""))
+                    else:
+                        api.warning("[gear] cannot unequip %s for transfer: %s %s" % (item.get("base"), code, res.get("error") or ""))
+                    return False
+                api.wait_result(res)
+            code, res = api.act(giver, {"action": "give", "to": "main" if receiver is None else receiver, "item": item["id"], "wait": False})
+            api.debug("[gear] %s %s L%s: %s -> %s: %s %s" % (item["base"], item.get("rarity"), item["level"], api.who(giver),
                                                          api.who(receiver), code, "" if code == 200 else res.get("error")))
+            if code != 200:
+                return False
+            api.wait_result(res)
         for _ in range(len(items) + 1):  # one equip per act: put the pieces on one by one
             m, _ = api.me(receiver)
             if not m:   # the server refused the read (rate limit): the next round puts it on
                 break
+            api.wait_busy(m)
             care.auto_equip(receiver, m)
         return True
     finally:
@@ -139,6 +162,8 @@ def balance(groups, dry=False, everything=False):
     gear out and hand over what changes hands between heroes standing within rules.GEAR_REACH of each other."""
     all_moves = []
     for members in groups:
+        if len(set(members)) < 2:
+            continue
         heroes = survey(members)
         moves = plan(heroes)
         all_moves += moves
@@ -192,16 +217,9 @@ def feed(groups, keep=rules.FOOD_KEEP):
         heroes = survey(members)
         food = lambda m: sum((m.get("bag") or {}).get(k, 0) for k in ("meat", "bread", "roast"))
         for r, rm in heroes.items():
-            if food(rm) >= keep or rm["hp"] <= 0 or rm["ap"] < 12 or lease.leased(r, "gear"):
+            if r is None and not rules.AUTO_GIVE_MAIN:
                 continue
-            donors = [g for g, gm in heroes.items() if g != r and (gm.get("bag") or {}).get("meat", 0) > keep
-                      and _dist(gm, rm) <= MAX_WALK]
-            if not donors and rules.BUY_MEAT_WHEN_STARVING and rm["food"] < 40 and rm["ring"] == "camp" and rm.get("coins", 0) >= 8:
-                from . import market   # nobody to share: a few coins buy meat at the camp market
-                got = market.buy(r, "meat", 3)
-                api.info("[gear] %s bought %s meat at the market" % (api.who(r), got))
-                m, _ = api.me(r)
-                care.eat(r, m, below=60)
+            if food(rm) >= keep or rm["hp"] <= 0 or rm["ap"] < 12 or lease.leased(r, "gear"):
                 continue
             for g, gm in heroes.items():
                 spare = (gm.get("bag") or {}).get("meat", 0) - keep
@@ -215,7 +233,7 @@ def feed(groups, keep=rules.FOOD_KEEP):
                     if not meet(g, r):
                         continue
                     code, res = api.act(g, {"action": "give", "to": "main" if r is None else r, "goods": "meat", "qty": give})
-                    api.info("[gear] %d meat: %s -> %s: %s %s" % (give, api.who(g), api.who(r), code, "" if code == 200 else res.get("error")))
+                    api.debug("[gear] %d meat: %s -> %s: %s %s" % (give, api.who(g), api.who(r), code, "" if code == 200 else res.get("error")))
                     if code == 200:
                         m, _ = api.me(r)
                         care.eat(r, m, below=60)
@@ -266,10 +284,13 @@ def loop(groups):
     while True:
         try:
             if not abyss.PAUSE.is_set():
-                for u in [u for members in groups for u in members]:
+                for u in dict.fromkeys(u for members in groups for u in members):
                     m, _ = api.me(u)
                     if m:
                         care.spend_talents(u, m)
+                        from . import nav
+                        if m.get('ring') == 'camp' or nav.at_tribe(m):
+                            care.auto_salvage(u, m)
                 feed(groups)
                 balance(groups)
                 sell_surplus(groups)
@@ -283,6 +304,8 @@ KEEP_COINS = rules.COIN_KEEP   # nobody carries more than this; the rest is hand
 
 def collect_coins():
     """The heroes standing beside the main character (within rules.GEAR_REACH) give it all their coins above KEEP_COINS."""
+    if not rules.AUTO_GIVE_MAIN:
+        return
     main, _ = api.me(None)
     if not main:
         return
@@ -293,13 +316,15 @@ def collect_coins():
         spare = (m.get("coins") or 0) - KEEP_COINS
         if spare > 0:
             code, r = api.act(u, {"action": "give", "to": "main", "coins": spare})
-            api.info("[coins] %s gives %d to the main character: %s %s" % (u, spare, code, "" if code == 200 else r.get("error")))
+            api.debug("[coins] %s gives %d to the main character: %s %s" % (u, spare, code, "" if code == 200 else r.get("error")))
 
 
 def collect_valuables():
     """The same hand-over for what a fall does not take away (the owner, 2026-11-05): the heroes standing beside the main
     character (within rules.GEAR_REACH) give it every rune, stone, seal, dust, crystal, shard and gem they carry (tribe.currencies,
     minus rules.KEEP_CURRENCIES)."""
+    if not rules.AUTO_COLLECT_MAIN:
+        return
     from . import tribe
     main, _ = api.me(None)
     if not main:
@@ -310,7 +335,7 @@ def collect_valuables():
             continue
         for name, qty in tribe.currencies(u, m).items():
             code, r = api.act(u, {"action": "give", "to": "main", "goods": name, "qty": qty})
-            api.info("[valuables] %s gives %d %s to the main character: %s %s" % (u, qty, name, code, "" if code == 200 else r.get("error")))
+            api.debug("[valuables] %s gives %d %s to the main character: %s %s" % (u, qty, name, code, "" if code == 200 else r.get("error")))
 
 
 def coin_loop(every=300):

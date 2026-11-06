@@ -5,7 +5,7 @@ import time
 from . import api, combat, rules
 
 
-FLOOR = rules.FIGHT_FLOOR   # an ambushed hero fights when the model leaves it over this share (retreating costs blows too: `home` takes ~20 s)
+FLOOR = rules.FIGHT_FLOOR   # an ambushed hero fights when the model leaves it over this share
 ABORT = rules.FIGHT_FLOOR   # ... and breaks off when its health falls under this share
 
 

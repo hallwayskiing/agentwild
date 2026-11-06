@@ -61,9 +61,9 @@ def assemble(before_join=None):
     for u in units:   # (a hero already at the camp keeps its 8 points)
         h, _ = api.me(u)
         if h and h["ring"] != "camp":
-            api.act(u, {"action": "home"})
+            api.act(u, {"action": "home", "why": "the Abyss: to the camp to form the squad"})
     if m["ring"] != "camp":
-        api.act(None, {"action": "home"})
+        api.act(None, {"action": "home", "why": "the Abyss: the main character to the camp to form the squad"})
     time.sleep(25)
     main, _ = api.me(None)
     for u in units:
@@ -74,7 +74,7 @@ def assemble(before_join=None):
     joined = []
     for u in units:
         code, r = api.act(u, {"action": "rejoin"})
-        api.info("[abyss] %s rejoin: %s %s" % (u, code, "" if code == 200 else r.get("error")))
+        api.debug("[abyss] %s rejoin: %s %s" % (u, code, "" if code == 200 else r.get("error")))
         if code == 200 or (code == 404 and "out on its own" in str(r.get("error"))):   # (404: it already walks with us)
             joined.append(u)
     return joined
@@ -85,7 +85,7 @@ def prepare(joined):
     main, _ = api.me(None)
     # since skill 0.24.30 the climb needs a 30-coin ticket besides the points: the heroes standing next to the main
     # character chip in what they can spare
-    for u in joined:
+    for u in joined if rules.AUTO_GIVE_MAIN else ():
         if main.get("coins", 0) >= TICKET + 5:
             break
         m, _ = api.me(u)
@@ -101,7 +101,7 @@ def prepare(joined):
         bag = m.get("bag") or {}
         if m["food"] < 70 and not (bag.get("bread") or bag.get("meat")) and (main["bag"].get("meat") or 0) >= 3:
             code, r = api.act(None, {"action": "give", "to": u, "goods": "meat", "qty": 3})
-            api.info("[abyss] meat to %s: %s" % (u, code))
+            api.debug("[abyss] meat to %s: %s" % (u, code))
             main["bag"]["meat"] -= 3
         if m.get("coins", 0) < 12 and main.get("coins", 0) >= 12:
             api.act(None, {"action": "give", "to": u, "coins": 10})
@@ -123,7 +123,7 @@ def fight_loop(seconds_left=None):
     deadline = time.time() + (seconds_left if seconds_left is not None else 55 * 60) - 180   # (the game gives 60 minutes)
     while time.time() < deadline:
         code, r = api.act(None, {"action": "abyss", "do": "fight"})
-        api.info("[abyss] fight: %s %s" % (code, json.dumps(api.clean(r), ensure_ascii=False)[:300]))
+        api.debug("[abyss] fight: %s %s" % (code, json.dumps(api.clean(r), ensure_ascii=False)[:300]))
         if code == 429 and "action points" in str(r.get("error")):
             time.sleep(min(60, max(5, r.get("retry_after_seconds") or 20)))  # 3 points a minute come back: wait, never leave
             continue

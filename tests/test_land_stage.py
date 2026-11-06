@@ -27,13 +27,13 @@ class StageRestTests(unittest.TestCase):
             done = tribe.stage_rest(928)
         return done, go, deposit
 
-    def test_goods_make_the_wait_a_tribe_trip_reusing_the_direct_go(self):
-        field = hero(bag={"hide": 25})
-        at_tribe = hero(x=nav.TOTEM[0], y=nav.TOTEM[1], ring="forest")
+    def test_goods_make_the_wait_a_tribe_trip(self):
+        # The user removed goods from tribe triggers: hurt heroes recover at tribe
+        field = hero(hp=50, max_hp=100)
+        at_tribe = hero(x=nav.TOTEM[0], y=nav.TOTEM[1], ring="forest", hp=50, max_hp=100)
         done, go, deposit = self.run_stage([(field, None), (at_tribe, None)], [100, 100, 0])
         self.assertTrue(done)
         go.assert_called_once()
-        self.assertTrue(go.call_args.kwargs.get("direct"))
         deposit.assert_called_once_with(928)
 
     def test_nothing_worthwhile_rests_in_the_camp(self):

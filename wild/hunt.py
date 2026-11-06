@@ -11,7 +11,7 @@ import json
 import threading
 import time
 
-from . import abyss, ambush, api, care, combat, danger, landwatch, lease, queue, rules, state, tribe
+from . import abyss, ambush, api, bestiary, care, combat, danger, landwatch, lease, queue, rules, state, tribe
 
 FIN_STOP = round(rules.FIGHT_FLOOR * 100)   # the finisher's stop_below: the game now halts BEFORE the round that may cross it (wiki bug #12)
 ELITE_STOP = FIN_STOP   # ... against an elite
@@ -20,7 +20,7 @@ IDLE_RELAX = 3        # after this many cycles without a target the squad stops 
 FIN_AP = 25           # a finisher below this many points steps back for the next level up
 ELITE_AVOID = 7        # tiles: a squad without elites takes no target with an elite this close to it
 CROWD = None          # (off, the owner 00:22) a target with this many other creatures within 6 tiles is skipped
-SOLO_FLOOR = rules.FIGHT_FLOOR   # a lone finisher takes a plain creature when it ends over this share of its health (None: never)
+SOLO_FLOOR = rules.FIGHT_FLOOR   # pre-fight model floor for a lone finisher
 HOME_AP = 8           # what `home` costs: a helper never spends below it
 GONE_SECS = 600       # a creature that was gone when we arrived is not tried again for this long
 LEVEL_SPAN = rules.LEVEL_SPAN
@@ -169,13 +169,9 @@ class Squad:
                 api.who(u), self.center, far, to, code, "" if code == 200 else str(api.clean(r))[:100]))
 
     def fresh(self, unit):
-        """A hero's /me, read again (up to 3 times) when the server is slow; None only if all of them failed."""
-        for _ in range(3):
-            m, _v = api.me(unit)
-            if m:
-                return m
-            time.sleep(2)
-        return None
+        """A hero's fresh /me; the API client handles transport retries."""
+        m, _v = api.me(unit)
+        return m
 
     def say(self, level, text):
         api.log(level, "[%s] %s" % (self.name, text))
@@ -185,7 +181,13 @@ class Squad:
         range): one read instead of eight, and not limited to what the 15x15 view shows."""
         lo, hi = rules.LEVEL_MIN, fin["level"] + LEVEL_SPAN   # the owner: from LEVEL_MIN up to the finisher's level +3
         code, h = api.call("GET", "/world/hunt?min=%d&max=%d&limit=20%s" % (lo, hi, "&unit=%d" % fin_id if fin_id else ""))
-        return (h.get("creatures") or []) if code == 200 else []
+        if code == 200 and isinstance(h.get("creatures"), list):
+            from . import bestiary
+            for c in h["creatures"]:
+                if "hp" not in c:
+                    c["hp"] = c.get("max_hp") or bestiary.hp_at(c.get("kind"), c.get("level", 1), bool(c.get("elite")))
+            return h["creatures"]
+        return None
 
     def usable(self, t):
         """Plain creature, inside this squad's region, not known to be gone."""
@@ -202,10 +204,15 @@ class Squad:
         around = self.view.get(fin_id) or {}
         pals = [m for u, m in ready.items() if u != fin_id and m["ring"] != "camp"] if self.close else []   # (a mate at the camp has nothing round it: no limit then)
         seen, out = set(), []
-        pools = [self.fetch(fin_id, fin), [t for t in (around.get("things") or []) if t.get("type") == "creature"]]
+        found = self.fetch(fin_id, fin)
+        if found is None:
+            return None
+        pools = [found, [t for t in (around.get("things") or []) if t.get("type") == "creature"]]
         crowd = [c for pool in pools for c in pool]   # every creature we know of: a target in a crowd is left alone
         for pool in pools:
             for t in pool:
+                if "hp" not in t:
+                    t["hp"] = t.get("max_hp") or bestiary.hp_at(t.get("kind"), t.get("level", 1), bool(t.get("elite")))
                 if t["id"] in seen or not self.usable(t):
                     continue
                 if not self.elites and any(o.get("elite") and o["id"] != t["id"]
@@ -227,7 +234,7 @@ class Squad:
         # elites drop gear (35%): when the elite hunter is nearly whole they count one and a half times in the ranking,
         # otherwise (hurt) plain creatures lead; plain creatures stay the bread and butter
         boost = 1.5 if self.elites and fin["hp"] >= 0.85 * fin["max_hp"] else 1.0
-        out.sort(key=lambda p: -p[0]["level"] * 12 * (boost if p[0].get("elite") else 1) / (p[0]["hp"] + p[1] * 3))
+        out.sort(key=lambda p: -p[0]["level"] * 12 * (boost if p[0].get("elite") else 1) / ((p[0].get("hp") or p[0].get("max_hp") or 100) + p[1] * 3))
         return [t for t, _ in out]
 
     def feasible(self, t, fin_id, ready):
@@ -239,7 +246,9 @@ class Squad:
         # with 7 points, unable to leave)
         team = [(u, m) for u, m in ready.items() if u != fin_id
                 and m["ap"] >= walk_cost(m, stand[0], stand[1]) + 6 + HOME_AP]
-        if t["hp"] <= 45:
+        thp = t.get("hp") or t.get("max_hp") or 100
+        t["hp"] = thp
+        if thp <= 45:
             return team
         ok, dealt, cost, detail = combat.plan([m for _, m in team], ready[fin_id], t)
         if not ok and not team and SOLO_FLOOR is not None:
@@ -271,7 +280,7 @@ class Squad:
                 fresh, _ = api.me(u)
                 api.wait_busy(fresh)
             code, r = api.act(u, {"action": "bounty"})
-            self.say("NOTICE", "bounty claim by %s: %s %s" % (api.who(u), code, json.dumps({k: r.get(k) for k in ("claimed", "xp", "coins", "got", "level_up", "error")}, ensure_ascii=False)))
+            self.say("INFO", "bounty claim by %s: %s %s" % (api.who(u), code, json.dumps({k: r.get(k) for k in ("claimed", "xp", "coins", "got", "level_up", "error")}, ensure_ascii=False)))
             if code == 200:
                 return
 
@@ -284,8 +293,14 @@ class Squad:
             return
         # one cheap read of /world/hero/ap: when nobody of the squad has points to act, don't read every hero
         # (the points come back one by one: wait for the first)
+        active = [u for u in self.members if (rules.AUTO_HUNT or queue.hunting(u))
+                  and not lease.leased(u, self.name)
+                  and (self.land or not landwatch.STATE["on"] or u not in rules.CORRUPT_LAND["units"])]
+        if not active:
+            time.sleep(30)
+            return
         pts = api.ap_all()
-        mine = [pts[u] for u in self.members if u in pts and (rules.AUTO_HUNT or queue.hunting(u)) and not lease.leased(u, self.name)]
+        mine = [pts[u] for u in active if u in pts]
         if mine and len(mine) == len(self.members) and all(p.get("ap", 99) < 8 for p in mine):
             nxt = min(api.iso_wait(p.get("next_ap_at")) for p in mine)
             time.sleep(min(max(nxt, 5) + 1, 60))
@@ -313,12 +328,24 @@ class Squad:
             if "tribe" not in (state._notes.get(u or 0, ("",))[0] or ""):
                 state.note(u, "狩猎待命(%s)" % self.name)
             if m["hp"] > 0 and m["ring"] != "camp" and m["ap"] >= HOME_AP:
-                if ambush.handle(u, m, view, say=lambda t: self.say("WARNING", t)) == "home":   # a real ambush: fought if winnable, else home
+                def _log_ambush(t):
+                    if "beatable" in t or "fighting back" in t:
+                        self.say("INFO", t)
+                    else:
+                        self.say("WARNING", t)
+                if ambush.handle(u, m, view, say=_log_ambush) == "home":   # a real ambush: fought if winnable, else home
                     m["ring"] = "camp"
             care.claim_chest(u, m)   # (the main character only, in the camp, once a day after 12:00 UTC+8)
             self.food_heal(u, m)   # food healing outranks going home: only a hero still hurt afterwards recovers
             if self.queue_recover_if_hurt(u, m):
                 continue  # the recovery worker owns all subsequent actions
+            if care.repair_due(m, u):
+                if not (m.get("bag") or {}).get("dust", 0):
+                    queue.add(u, "repair-tribe", "resume-hunt", prio=9)
+                    continue
+                if m.get("ring") != "camp":
+                    queue.add(u, "repair-camp", "resume-hunt", prio=9)
+                    continue
             if self.bread:
                 if self.heal_items is care.HEAL_ITEMS:
                     care.restock_bandage(u, m)   # no-op while rules.AUTO_RESTOCK_BANDAGE is off
@@ -329,17 +356,17 @@ class Squad:
             care.auto_repair(u, m)
             if m["ring"] == "camp":  # reading a piece costs 5 coins and 2 a level since skill 0.24.30
                 for g in [g for g in m.get("gear_bag") or [] if g.get("unidentified")]:
+                    if g.get("level", 0) < rules.IDENTIFY_MIN_LEVEL:
+                        continue
                     cost = 5 + 2 * g["level"]
                     if m.get("coins", 0) - cost < rules.IDENTIFY_KEEP_COINS:
                         break
                     code, _r = api.act(u, {"action": "identify", "item": g["id"]})
                     if code == 200:
                         m["coins"] = m.get("coins", 0) - cost
+                care.auto_salvage(u, m)
         if self.bread:
             care.share_bread(units)
-        for u, m in units.items():  # a broken weapon counts for nothing: whoever stands next to it lends the coins
-            if care.lend_for_repair(u, m, units):
-                care.auto_repair(u, m)
         if self.claims_bounties:
             self.claim_bounties(units)
         # the owner's gather order is waiting for points: no fights meanwhile (they would eat the points); in the field the
@@ -358,9 +385,9 @@ class Squad:
             if m["hp"] < m["max_hp"] * rules.HOME_BELOW:
                 api.act(u, {"action": "home", "why": "hurt in the field: health %d/%d is under %d%%" % (m["hp"], m["max_hp"], 100 * rules.HOME_BELOW)})
                 m["ring"] = "camp"
-            elif m["ring"] not in ("meadow", "forest"):
+            elif m["ring"] not in ("meadow", "forest") and m["ring"] not in (self.rings or ()):
                 # far from the hunting ground (it fell and woke at the totem, or a trip ended): home first
-                self.say("WARNING", "%s is far from its ground (%s,%s): home" % (api.who(u), m["x"], m["y"]))
+                self.say("DEBUG", "%s is far from its ground (%s,%s): home" % (api.who(u), m["x"], m["y"]))
                 api.act(u, {"action": "home", "why": "far from its hunting ground (%s,%s), ring %s" % (m["x"], m["y"], m["ring"])})
                 m["ring"] = "camp"
         sit_out = self.hold | resting
@@ -386,7 +413,12 @@ class Squad:
             fm = ready[cand]
             pals = sorted((m["x"], m["y"]) for u, m in ready.items() if u != cand and m["ap"] >= 12)
             centre = (pals[len(pals) // 2][0], sorted(p[1] for p in pals)[len(pals) // 2]) if pals else None
-            for tt in self.pick_target(cand, fm, ready, centre)[:8]:
+            targets = self.pick_target(cand, fm, ready, centre)
+            if targets is None:
+                self.say("WARNING", "hunt read failed; waiting without treating it as an empty area")
+                time.sleep(15)
+                return
+            for tt in targets[:8]:
                 if time.time() - self.skipped.get(tt["id"], 0) < 150:
                     continue
                 tm = self.feasible(tt, cand, ready)
@@ -410,7 +442,7 @@ class Squad:
         fin = ready[fin_id]
         self.fought.add(fin_id)   # (its talent points are looked at once the fight is over: run())
         stand = [t["x"] - 1, t["y"]]
-        self.say("INFO", "finisher %s L%s xp %s/%s hp %s ap %s -> %s hp %s at (%s,%s); helpers %s" % (
+        self.say("DEBUG", "finisher %s L%s xp %s/%s hp %s ap %s -> %s hp %s at (%s,%s); helpers %s" % (
             api.who(fin_id), fin["level"], fin["xp"], fin["xp_next"], fin["hp"], fin["ap"], what(t),
             t["hp"], t["x"], t["y"], [u for u, _ in team]))
         # the finisher goes first and looks: other players hunt here too, and a creature that is gone costs one
@@ -424,7 +456,7 @@ class Squad:
             self.gone[t["id"]] = time.time()
             self.say("DEBUG", "%s #%s is gone: aborting before the others set out" % (what(t), t["id"]))
             return
-        t["hp"] = there[0]["hp"]
+        t["hp"] = there[0].get("hp") or there[0].get("max_hp") or t.get("hp") or bestiary.hp_at(t.get("kind"), t.get("level", 1), bool(t.get("elite")))
         if self.feasible(t, fin_id, ready) is None and t["hp"] > 45:
             self.skipped[t["id"]] = time.time()
             self.say("WARNING", "%s #%s has more health than seen (%s): letting it go" % (what(t), t["id"], t["hp"]))
@@ -504,7 +536,7 @@ class Squad:
                     fin2 = self.fresh(fin_id)
                     api.wait_busy(fin2)
             if code == 200 and r.get("killed"):
-                self.say("NOTICE", "finisher %s killed %s (loot: %s)" % (api.who(fin_id), what(t), json.dumps(r.get("loot") or r.get("got") or "", ensure_ascii=False)[:120]))
+                self.say("INFO", "finisher %s killed %s (loot: %s)" % (api.who(fin_id), what(t), json.dumps(r.get("loot") or r.get("got") or "", ensure_ascii=False)[:120]))
             else:
                 self.skipped[t["id"]] = time.time()
                 self.say("WARNING", "%s not finished (code %s, creature hp %s): let go" % (what(t), code, hp))
@@ -524,7 +556,7 @@ class Squad:
                 finishing = hp <= combat.my_blow(fin2.get("attack"), fin2.get("crit"))
                 if not finishing and not combat.safe_round(fin2, dict(t, hp=hp), FIN_STOP):
                     self.skipped[t["id"]] = time.time()
-                    self.say("INFO", "finisher %s stops: the next round could take it under %d%% (creature hp %s)" % (api.who(fin_id), FIN_STOP, hp))
+                    self.say("DEBUG", "finisher %s stops: the next round could take it under %d%% (creature hp %s)" % (api.who(fin_id), FIN_STOP, hp))
                     break
                 code, r = api.act(fin_id, req)
                 if code == 200:
@@ -548,7 +580,7 @@ class Squad:
                     fin2 = self.fresh(fin_id)
                     api.wait_busy(fin2)
             if code == 200 and r.get("killed"):
-                self.say("NOTICE", "finisher %s killed %s%s" % (api.who(fin_id), what(t), (" (xp +%s)" % r["xp"]) if isinstance(r.get("xp"), (int, float)) else ""))
+                self.say("INFO", "finisher %s killed %s%s" % (api.who(fin_id), what(t), (" (xp +%s)" % r["xp"]) if isinstance(r.get("xp"), (int, float)) else ""))
             elif code != 200:
                 if code != 0:
                     self.gone[t["id"]] = time.time()  # slain or walked off while we came
@@ -567,6 +599,7 @@ class Squad:
                         care.spend_talents(u, m)
                 self.fought.clear()
             except Exception as e:
-                self.say("ERROR", "exception %r" % e)
+                import traceback
+                self.say("ERROR", "exception %r\n%s" % (e, traceback.format_exc()))
                 time.sleep(20)
             time.sleep(2)

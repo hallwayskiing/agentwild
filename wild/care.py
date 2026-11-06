@@ -41,12 +41,19 @@ def heal_with_items(unit, m, below=rules.HEAL_BELOW, target=rules.HEAL_TO, items
         n = bag.get(item) or 0
         while m["hp"] < target * m["max_hp"] and n > 0 and eaten < 15:
             code, r = api.act(unit, {"action": "eat", "item": item})
-            if code != 200 or r.get("hp") is None or r["hp"] <= m["hp"]:
-                break
-            m["hp"], n, eaten = r["hp"], n - 1, eaten + 1
+            if code != 200:
+                bag[item] = n
+                return eaten
+            hp = r.get("hp")
+            if not isinstance(hp, (int, float)):
+                hp = (r.get("me") or {}).get("hp")
+            if hp is None or hp <= m["hp"]:
+                return eaten
+            m["hp"], n, eaten = hp, n - 1, eaten + 1
+            api.wait_result(r)
         bag[item] = n
     if eaten:
-        api.info("[%s] ate %d bandage/bread/roast: hp %d/%d (%d bandage, %d bread left)" % (api.who(unit), eaten, m["hp"], m["max_hp"], bag.get("bandage") or 0, bag.get("bread") or 0))
+        api.debug("[%s] ate %d bandage/bread/roast: hp %d/%d (%d bandage, %d bread left)" % (api.who(unit), eaten, m["hp"], m["max_hp"], bag.get("bandage") or 0, bag.get("bread") or 0))
     return eaten
 
 
@@ -63,7 +70,7 @@ def restock_bread(unit, m):
     if packs < 1:
         return False
     code, r = api.act(unit, {"action": "requisition", "item": "bread", "qty": packs})
-    api.info("[%s] requisition %d packs of bread: %s %s" % (api.who(unit), packs, code,
+    api.debug("[%s] requisition %d packs of bread: %s %s" % (api.who(unit), packs, code,
                                                        str(r.get("got") or r.get("error"))[:80]))
     if code == 200:
         m.setdefault("bag", {})["bread"] = packs * 5
@@ -103,7 +110,7 @@ def restock_bandage(unit, m):
     if packs < 1:
         return False
     code, r = api.act(unit, {"action": "requisition", "item": "bandage", "qty": packs})
-    api.info("[%s] requisition %d packs of bandages: %s %s" % (api.who(unit), packs, code,
+    api.debug("[%s] requisition %d packs of bandages: %s %s" % (api.who(unit), packs, code,
                                                              str(r.get("got") or r.get("error"))[:80]))
     if code == 200:
         m.setdefault("bag", {})["bandage"] = have + packs * 3
@@ -114,6 +121,8 @@ def share_bread(units, low=30):
     """A member with fewer than `low` bread gets half of the surplus of a squadmate standing within 3 tiles (the owner: the
     forest pair asks each other when one runs out)."""
     for u, m in units.items():
+        if u is None and not rules.AUTO_GIVE_MAIN:
+            continue
         have = (m.get("bag") or {}).get("bread") or 0
         if have >= low:
             continue
@@ -123,7 +132,7 @@ def share_bread(units, low=30):
                 continue
             qty = (other - have) // 2
             code, _r = api.act(v, {"action": "give", "to": "main" if u is None else u, "goods": "bread", "qty": qty})
-            api.info("[%s] gives %d bread to %s: %s" % (api.who(v), qty, api.who(u), code))
+            api.debug("[%s] gives %d bread to %s: %s" % (api.who(v), qty, api.who(u), code))
             if code == 200:
                 m.setdefault("bag", {})["bread"] = have + qty
                 o["bag"]["bread"] = other - qty
@@ -134,7 +143,7 @@ def roast_and_eat(unit, meat):
     """Cook roast from the meat (3 points a batch of up to 10, anywhere) and eat one. True if it ate."""
     qty = min(meat, rules.ROAST_BATCH)   # a few at a time: the rest stays meat for the store and the squad
     code, r = api.act(unit, {"action": "cook", "recipe": "roast", "qty": qty})
-    api.info("[%s] roast %d meat: %s %s" % (api.who(unit), qty, code, "" if code == 200 else r.get("error")))
+    api.debug("[%s] roast %d meat: %s %s" % (api.who(unit), qty, code, "" if code == 200 else r.get("error")))
     if code != 200:
         return False
     api.wait_busy(api.me(unit)[0])
@@ -169,7 +178,7 @@ def spend_talents(unit, m):
             return
         n = min(pts, pick["max"] - pick["rank"])
         code, r = api.act(unit, {"action": "talent", "talent": pick["id"], "points": n})
-        api.info("  %s takes %d point(s) in %s: %s %s" % (api.who(unit), n, pick["id"], code, "" if code == 200 else str(r.get("error"))[:80]))
+        api.debug("  %s takes %d point(s) in %s: %s %s" % (api.who(unit), n, pick["id"], code, "" if code == 200 else str(r.get("error"))[:80]))
         if code != 200:
             return
         pts -= n
@@ -215,6 +224,17 @@ _equip_lock = threading.Lock()
 _TWO_HANDED = {"maul", "bow", "longbow"}
 
 
+def compatible_hands(item, m):
+    """A shield and a two-handed weapon cannot be worn together."""
+    worn = m.get("worn") or {}
+    slot = item.get("slot")
+    if slot == "offhand" and (worn.get("weapon") or {}).get("base") in _TWO_HANDED:
+        return False
+    if slot == "weapon" and item.get("base") in _TWO_HANDED and worn.get("offhand"):
+        return False
+    return True
+
+
 def auto_equip(unit, m):
     """Wear any piece the game scores above the worn one (an empty slot counts as 0), up to 2 levels above us, not broken."""
     worn = m.get("worn") or {}
@@ -226,9 +246,7 @@ def auto_equip(unit, m):
         slot = g["slot"]
         comparison = g.get("vs_worn") or {}
         # A missing power score can mean the server rejected the combination, not that the item has no score.
-        if comparison.get("two_handed_weapon") or (slot == "offhand" and (worn.get("weapon") or {}).get("base") in _TWO_HANDED):
-            continue
-        if slot == "weapon" and g.get("base") in _TWO_HANDED and worn.get("offhand"):
+        if comparison.get("two_handed_weapon") or not compatible_hands(g, m):
             continue
         with _equip_lock:
             if _equip_cooldown.get((unit, slot), 0) > time.monotonic():
@@ -236,8 +254,8 @@ def auto_equip(unit, m):
         d = comparison.get("power")
         better = d > 0 if d is not None else power(g) > power(worn.get(g["slot"]))
         if better:
-            code, r = api.act(unit, {"action": "equip", "item": g["id"]})
-            api.info("  %s equips %s L%s %s: %s %s" % (api.who(unit), g["base"], g["level"], g["rarity"], code,
+            code, r = api.act(unit, {"action": "equip", "item": g["id"], "wait": False})
+            api.debug("  %s equips %s L%s %s: %s %s" % (api.who(unit), g["base"], g["level"], g["rarity"], code,
                                                       "" if code == 200 else json.dumps(api.clean(r), ensure_ascii=False)[:200]))
             if code == 200:
                 with _equip_lock:
@@ -249,60 +267,226 @@ def auto_equip(unit, m):
                 seconds = int(match.group(1)) + 1 if match else 300
                 with _equip_lock:
                     _equip_cooldown[(unit, slot)] = time.monotonic() + seconds
+            if code in (0, 202):
+                return
 
 
 def identify():
-    """Runed and better drops are unidentified and count for nothing until read at the camp (main must be there)."""
-    code, r = api.act(None, {"action": "identify", "item": "all"})
-    return code, [g.get("name") for g in r.get("identified") or []]
+    """Identify the main character's eligible pieces individually, respecting the level and coin reserve."""
+    m, _ = api.me(None)
+    if not m:
+        return 0, []
+    identified = []
+    code = 200
+    for g in m.get("gear_bag") or []:
+        level = g.get("level", 0)
+        if not g.get("unidentified") or level < rules.IDENTIFY_MIN_LEVEL:
+            continue
+        cost = 5 + 2 * level
+        if m.get("coins", 0) - cost < rules.IDENTIFY_KEEP_COINS:
+            continue
+        api.wait_busy(m)
+        code, r = api.act(None, {"action": "identify", "item": g["id"], "wait": False})
+        if code != 200:
+            break
+        identified.extend(x.get("name") for x in r.get("identified") or [])
+        m, _ = api.me(None)
+        if not m:
+            return 0, identified
+    return code, identified
 
 
 def repair(unit, item_id):
-    """Repair one piece (works anywhere since skill.md 0.24.12; costs coins, a few for a basic piece)."""
-    code, r = api.act(unit, {"action": "repair", "item": item_id})
+    """Repair one piece with dust at a smith or workbench, never with coins."""
+    code, r = api.act(unit, {"action": "repair", "item": item_id, "with": "dust"})
     return code, r.get("error") or r.get("cost")
 
 
-DUST_BELOW = 0.30   # the owner (2026-11-05): at the camp or the tribe, worn pieces under 30% durability are repaired with dust
+DUST_BELOW = rules.DUST_BELOW   # the owner (2026-11-05): at the camp or the tribe, worn pieces under 20% are repaired with dust
+_dust_shortfall = {}
 
 
 def dust_repair(unit, m):
-    """At the camp or on the tribe's land: every worn piece (tools too) under DUST_BELOW of its durability is repaired with
-    dust (`with: dust`), while the hero has some."""
+    """Dust-repair worn pieces and broken bag pieces needed for an empty slot, at a smith or workbench."""
     from . import nav
-    if not (m.get("ring") == "camp" or nav.at_tribe(m)):
+    if not (m.get("ring") == "camp" or nav.dist(m, rules.TRIBE_WORKBENCH) <= 2):
         return
-    for slot, g in (m.get("worn") or {}).items():
+    pieces = list((m.get("worn") or {}).values()) + list(broken_for_empty_slots(unit, m).values())
+    better_weapon = broken_better_weapon(unit, m)
+    if better_weapon and all(not g or g.get("id") != better_weapon.get("id") for g in pieces):
+        pieces.append(better_weapon)
+    for g in pieces:
+        if not g:
+            continue
         top = g.get("durability_max") or 0
         if not top or g.get("durability") is None or g["durability"] >= DUST_BELOW * top:
             continue
         if not (m.get("bag") or {}).get("dust"):
-            return
+            return False
+        key = (unit, g["id"])
+        dust = m["bag"]["dust"]
+        last = _dust_shortfall.get(key)
+        if last and last[0] == dust and time.monotonic() - last[1] < 300:
+            continue
+        api.wait_busy(m)
         code, r = api.act(unit, {"action": "repair", "item": g["id"], "with": "dust"})
-        api.info("  %s repairs %s with dust (%s/%s): %s %s" % (api.who(unit), g.get("base"), g["durability"], top, code,
+        api.debug("  %s repairs %s with dust (%s/%s): %s %s" % (api.who(unit), g.get("base"), g["durability"], top, code,
                                                           str(r.get("error") or r.get("cost") or "")[:80]))
         if code == 200:
             g["durability"] = top
+            g["broken"] = False
             m["bag"]["dust"] = max(0, m["bag"].get("dust", 0) - (r.get("cost") if isinstance(r.get("cost"), int) else 1))
+        elif code in (400, 402) and "dust" in str(r.get("error", "")).lower() and "missing" in str(r.get("error", "")).lower():
+            _dust_shortfall[key] = (dust, time.monotonic())
+        # One action per pass: another action could replace a queued repair.
+        return code == 200
+    return False
 
 
-def auto_repair(unit, m, min_coins=8):
-    """Repair every worn piece that is broken (broken gear counts for nothing); never tools
-    (nobody farms or mines); first, at the camp or the tribe, the pieces under 30% are repaired with dust."""
-    dust_repair(unit, m)
-    if m.get("coins", 0) < min_coins:
-        return
-    for slot, g in (m.get("worn") or {}).items():
-        if slot == "tool":
+def auto_repair(unit, m):
+    """Repair with dust only, at the camp smith or near the tribe workbench."""
+    return dust_repair(unit, m)
+
+
+def is_pickaxe(item):
+    base = (item.get("base") or "").lower()
+    return "pickaxe" in base
+
+
+def is_axe(item):
+    base = (item.get("base") or "").lower()
+    return "axe" in base or "hatchet" in base
+
+
+def plain_salvage_candidates(m):
+    """Items in gear_bag that can be salvaged under the owner's rule (2026-11-05):
+    - Must be rarity 'plain' (white gear)
+    - Must not be unidentified
+    - Must preserve at least 1 pickaxe and at least 1 axe in the bag (besides whatever is worn),
+      prioritizing highest rarity/level/durability to keep.
+    """
+    if not rules.SALVAGE_PLAIN_GEAR:
+        return []
+    gear_bag = list(m.get("gear_bag") or [])
+    if not gear_bag:
+        return []
+
+    pickaxes = []
+    axes = []
+    for g in gear_bag:
+        if is_pickaxe(g):
+            pickaxes.append(g)
+        elif is_axe(g):
+            axes.append(g)
+
+    tier_order = {"plain": 0, "runed": 1, "treasured": 2, "set": 2, "mythic": 3}
+    def _rank(x):
+        return (tier_order.get(x.get("rarity"), 0), x.get("level", 0), x.get("durability", 0) or 0)
+
+    protected_ids = set()
+    if pickaxes:
+        pickaxes.sort(key=_rank, reverse=True)
+        protected_ids.add(pickaxes[0]["id"])
+    if axes:
+        axes.sort(key=_rank, reverse=True)
+        protected_ids.add(axes[0]["id"])
+
+    candidates = []
+    for g in gear_bag:
+        if g.get("id") in protected_ids:
             continue
-        top = g.get("durability_max") or 0
-        if top and g.get("durability") is not None and (g["durability"] <= 0 or g.get("broken")):   # only once broken (the owner, 2026-11-05)
-            code, res = repair(unit, g["id"])
-            api.info("  %s repairs %s (%s/%s): %s %s" % (api.who(unit), g["base"], g["durability"], top, code, res))
-            if code == 200:
-                m["coins"] = m.get("coins", 0) - (res if isinstance(res, int) else 8)
-            if m.get("coins", 0) < min_coins:
-                return
+        if g.get("unidentified"):
+            continue
+        if g.get("rarity") == "plain":
+            candidates.append(g)
+    return candidates
+
+
+def auto_salvage(unit, m):
+    """At the camp or tribe, automatically salvage all plain gear in gear_bag,
+    keeping at least 1 pickaxe and 1 axe in the bag besides worn gear."""
+    from . import nav
+    candidates = plain_salvage_candidates(m)
+    if not candidates:
+        return False
+
+    is_camp = m.get("ring") == "camp"
+    is_tribe = nav.at_tribe(m)
+    if not (is_camp or is_tribe):
+        return False
+
+    target_wb = rules.CAMP_WORKBENCH if is_camp else rules.TRIBE_WORKBENCH
+    if nav.dist(m, target_wb) > 2:
+        if is_camp:
+            dest = [rules.CAMP_WORKBENCH[0], rules.CAMP_WORKBENCH[1] + 1]
+        else:
+            dest = [rules.TRIBE_WORKBENCH[0], rules.TRIBE_WORKBENCH[1] - 1]
+        api.act(unit, {"action": "move", "to": dest, "until_there": True})
+        m, _ = api.me(unit)
+        if not m or nav.dist(m, target_wb) > 2:
+            return False
+
+    salvaged_any = False
+    for g in list(candidates):
+        api.wait_busy(m)
+        code, r = api.act(unit, {"action": "salvage", "item": g["id"]})
+        got = r.get("got") or {}
+        if code == 200:
+            salvaged_any = True
+            api.info("[%s] salvaged plain %s L%s (#%s): got %s" % (
+                api.who(unit), g.get("base"), g.get("level"), g["id"], got or "materials"))
+            if "gear_bag" in m:
+                m["gear_bag"] = [x for x in m["gear_bag"] if x.get("id") != g["id"]]
+            for k, v in got.items():
+                if "bag" in m and k in m["bag"]:
+                    m["bag"][k] = m["bag"].get(k, 0) + v
+            m["busy_until"] = r.get("busy_until") or (r.get("me") or {}).get("busy_until")
+        else:
+            api.debug("[%s] salvage %s (#%s) failed: %s %s" % (
+                api.who(unit), g.get("base"), g["id"], code, r.get("error")))
+            break
+    return salvaged_any
+
+
+def broken_for_empty_slots(unit, m):
+    """At most one suitable broken bag item per empty slot, only when no intact substitute exists."""
+    worn = m.get("worn") or {}
+    by_slot = {}
+    for g in m.get("gear_bag") or []:
+        slot = g.get("slot")
+        if not slot or worn.get(slot) or slot in rules.LOCKED_SLOTS.get(unit, ()) or g.get("unidentified"):
+            continue
+        if g.get("level", 0) > m.get("level", 0) + 2:
+            continue
+        if not compatible_hands(g, m):
+            continue
+        by_slot.setdefault(slot, []).append(g)
+    return {slot: max(items, key=power) for slot, items in by_slot.items()
+            if not any(g.get("durability", 0) > 0 and not g.get("broken") for g in items)
+            and any(g.get("durability") == 0 for g in items)}
+
+
+def broken_count(m, unit=None):
+    return sum(1 for g in (m.get("worn") or {}).values() if g and g.get("durability") == 0) + len(broken_for_empty_slots(unit, m))
+
+
+def broken_better_weapon(unit, m):
+    """Estimate broken bag weapons against worn weapon: the server omits their comparison score."""
+    if not rules.REPAIR_BETTER_BAG_WEAPON or "weapon" in rules.LOCKED_SLOTS.get(unit, ()):
+        return None
+    worn = (m.get("worn") or {}).get("weapon")
+    eligible = [g for g in m.get("gear_bag") or []
+                if g.get("slot") == "weapon" and (g.get("broken") or g.get("durability") == 0)
+                and not g.get("unidentified") and g.get("level", 0) <= m.get("level", 0) + 2
+                and compatible_hands(g, m) and power(g) > power(worn)]
+    return max(eligible, key=power) if eligible else None
+
+
+def repair_due(m, unit=None):
+    weapon = (m.get("worn") or {}).get("weapon") or {}
+    return ((rules.REPAIR_BROKEN_WEAPON and weapon.get("durability") == 0)
+            or bool(broken_better_weapon(unit, m))
+            or broken_count(m, unit) >= rules.REPAIR_TRIBE_BROKEN)
 
 
 def needs_repair(m):
@@ -316,7 +500,7 @@ def needs_repair(m):
 def lend_for_repair(unit, m, others, need=12, gift=10, keep=12):
     """A hero with worn-out gear and too few coins gets `gift` coins from a squadmate within 3 tiles who can spare it.
     True if coins were handed over."""
-    if m.get("coins", 0) >= need or not needs_repair(m):
+    if (unit is None and not rules.AUTO_GIVE_MAIN) or m.get("coins", 0) >= need or not needs_repair(m):
         return False
     for u, o in others.items():
         if u == unit or o.get("coins", 0) < gift + keep:
@@ -324,7 +508,7 @@ def lend_for_repair(unit, m, others, need=12, gift=10, keep=12):
         if max(abs(o["x"] - m["x"]), abs(o["y"] - m["y"])) > 3:
             continue
         code, _ = api.act(u, {"action": "give", "to": api.who(unit), "coins": gift})
-        api.info("  %s lends %d coins to %s for repairs: %s" % (api.who(u), gift, api.who(unit), code))
+        api.debug("  %s lends %d coins to %s for repairs: %s" % (api.who(u), gift, api.who(unit), code))
         if code == 200:
             o["coins"] -= gift
             m["coins"] = m.get("coins", 0) + gift
@@ -369,12 +553,12 @@ def claim_chest(unit, m):
     if not any(float(v or 0) > 0 for v in chest.values()):   # nothing in it: that is today's answer too
         _chest["day"] = day
         _save_chest(day)
-        api.info("[chest] %s: the chest is empty: nothing to bank" % day)
+        api.debug("[chest] %s: the chest is empty: nothing to bank" % day)
         return False
-    api.notice("[chest] %s: the main character is at the camp after %d:00 UTC+8: banking the chest %s with mode %s (the 80%% tier)" % (
+    api.info("[chest] %s: the main character is at the camp after %d:00 UTC+8: banking the chest %s with mode %s (the 80%% tier)" % (
         day, CHEST_AFTER_HOUR, chest, CHEST_MODE))
     code, r = api.act(None, {"action": "bank", "mode": CHEST_MODE})
-    api.notice("[chest] bank answer: %s %s" % (code, json.dumps(api.clean(r), ensure_ascii=False)[:300]))
+    api.info("[chest] bank answer: %s %s" % (code, json.dumps(api.clean(r), ensure_ascii=False)[:300]))
     if code == 200:
         _chest["day"] = day
         _save_chest(day)

@@ -50,9 +50,9 @@ tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a17
 <p class="sect">实时活动 <span id="lv"></span></p><div class="feed" id="l"></div>
 </main>
 <script>
-const COL={forest:'#43c985',forestE:'#43c985',meadowA:'#f2b84b',meadowB:'#b78cff',meadowC:'#5ab0f2',meadowD:'#f27a8a',main:'#43c985',corrupt:'#e0603c'};
-const SQ={forest:'魔王·森林西',forestE:'主角·森林东',main:'主角·森林东',corrupt:'腐化之地',meadowA:'草甸A',meadowB:'草甸B',meadowC:'草甸C',meadowD:'草甸D'};
-const RING={camp:'营地',meadow:'草甸',forest:'森林',highlands:'高地',ashlands:'灰烬地'};
+const COL={ember:'#e0603c',solstice:'#43c985',silverwing:'#5ab0f2',nightjar:'#b78cff',astral:'#f2b84b'};
+let SQ={};
+const RING={camp:'营地',meadow:'草甸',forest:'森林',highlands:'高地',ashlands:'灰烬之地',ruins:'遗迹'};
 const RES={wood:'木材',stone:'石头',ore:'铜矿'};
 const pct=(a,b)=>b?Math.max(0,Math.min(100,100*a/b)):0;
 const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -75,12 +75,12 @@ function row(h,now){
  <td>${RING[h.ring]||h.ring} <small class=mut>${h.x}, ${h.y}</small><br>${h.target?`<span class=tgt>→ ${h.target.x}, ${h.target.y} <small>${RES[h.target.label]||h.target.label}</small></span>`:'<small class=mut>无目标</small>'}</td>
  <td>${job}${esc(h.note||'—')}<div class=note>${h.lease?'租约: '+h.lease:''} ${nage?'· '+nage+'s 前':''}</div></td>
  <td class=mats>${mats}</td>
- <td>${h.weapon?h.weapon+' L'+h.weapon_level:'<span class=low>无武器</span>'}<br><small class=mut>${h.tool?h.tool+' '+h.tool_dur+'/'+h.tool_max:'无工具'} · 战力 ${h.power??'-'}</small></td>
+ <td>${h.weapon?h.weapon+' L'+h.weapon_level:'<span class=low>无武器</span>'}${h.offhand?'<br><small class=mut>副手 '+esc(h.offhand)+' L'+h.offhand_level+' '+h.offhand_dur+'/'+h.offhand_max+'</small>':''}<br><small class=mut>${h.tool?h.tool+' '+h.tool_dur+'/'+h.tool_max:'无工具'} · 战力 ${h.power??'-'}</small></td>
  <td>🪙 ${h.coins}<br><small class=mut>${foodText(h)}</small></td></tr>`}
-const LV=['DEBUG','INFO','NOTICE','WARNING','ERROR'],LC={DEBUG:'#667082',INFO:'#9fb3c8',NOTICE:'#5fe0a0',WARNING:'#f2b84b',ERROR:'#ff7b7b'};
-let show=JSON.parse(localStorage.getItem('lv')||'{"DEBUG":false,"INFO":true,"NOTICE":true,"WARNING":true,"ERROR":true}'),last=[];
+const LV=['DEBUG','INFO','WARNING','ERROR'],LC={DEBUG:'#667082',INFO:'#43c985',WARNING:'#f2b84b',ERROR:'#ff7b7b'};
+let show=JSON.parse(localStorage.getItem('lv2')||'{"DEBUG":true,"INFO":true,"WARNING":true,"ERROR":true}'),last=[];
 document.getElementById('lv').innerHTML=LV.map(v=>`<label style="margin-right:12px;color:${LC[v]};cursor:pointer"><input type=checkbox data-lv=${v} ${show[v]?'checked':''}> ${v}</label>`).join('');
-document.getElementById('lv').onchange=e=>{show[e.target.dataset.lv]=e.target.checked;localStorage.setItem('lv',JSON.stringify(show));feed(last)};
+document.getElementById('lv').onchange=e=>{show[e.target.dataset.lv]=e.target.checked;localStorage.setItem('lv2',JSON.stringify(show));feed(last)};
 function feed(lines){
  last=lines;
  const l=document.getElementById('l'),down=l.scrollTop+l.clientHeight>=l.scrollHeight-30;
@@ -94,6 +94,7 @@ const foodText=h=>h.items?Object.entries(h.items).map(([k,v])=>(FN[k]||k)+' '+v)
 async function tick(){
  try{
   const s=await (await fetch('/state')).json(),now=Date.now()/1000;
+  SQ=s.squads||{};
   document.getElementById('rows').innerHTML=s.heroes.map(h=>row(h,now)).join('');
   feed(s.log);
   document.getElementById('dot').className='dot';document.getElementById('t').textContent='实时 · '+new Date().toLocaleTimeString();

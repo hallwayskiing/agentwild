@@ -42,9 +42,10 @@ def live():
     m, now, out = r["me"], time.time(), {}
     roles = api.ap_all(600)   # grades and roles hardly change: one read in ten minutes
     w = (m.get("worn") or {}).get("weapon") or {}
-    out[0] = {"unit": 0, "squad": "main", "level": m.get("level"), "xp": m.get("xp"), "xp_next": m.get("xp_next"), "hp": m.get("hp"),
+    offhand = (m.get("worn") or {}).get("offhand") or {}
+    out[0] = {"unit": 0, "level": m.get("level"), "xp": m.get("xp"), "xp_next": m.get("xp_next"), "hp": m.get("hp"),
               "max_hp": m.get("max_hp"), "ap": m.get("ap"), "ap_max": m.get("ap_max"), "ring": m.get("ring"), "x": m.get("x"),
-              "y": m.get("y"), "coins": m.get("coins"), "bread": (m.get("bag") or {}).get("bread"), "items": items(m.get("bag") or {}), "weapon": w.get("base"), "title": title(m.get("hero") or {}), "at": now}
+              "y": m.get("y"), "coins": m.get("coins"), "bread": (m.get("bag") or {}).get("bread"), "items": items(m.get("bag") or {}), "weapon": w.get("base"), "offhand": offhand.get("base"), "offhand_level": offhand.get("level"), "offhand_dur": offhand.get("durability"), "offhand_max": offhand.get("durability_max"), "title": title(m.get("hero") or {}), "at": now}
     for u in r["me"].get("units") or []:
         bag = u.get("bag") or {}
         at = u.get("at") or [None, None]
@@ -66,7 +67,7 @@ def live():
 
 
 
-NOISE = re.compile(r"takes \d+ point|SKILL UPDATE|^\s*$")
+NOISE = re.compile(r"takes \d+ point|^\s*$")
 NAMES = {0: "主角", 928: "魔王"}
 
 _hist = {}   # unit -> {"last": (level, xp, xp_next), "cum": gained so far, "pts": [(time, cum)]}
@@ -95,6 +96,7 @@ def track(h):
 
 
 def snapshot():
+    from wild import rules
     try:
         with open(os.path.join(HERE, "state.json"), encoding="utf-8") as f:
             raw = json.load(f)
@@ -105,6 +107,9 @@ def snapshot():
         heroes[str(k)] = dict(heroes.get(str(k)) or {}, **{a: b for a, b in h.items() if b is not None})
     out = []
     for h in sorted(heroes.values(), key=lambda h: (h["unit"] not in (0, 928), h["unit"])):
+        if h.get("squad") not in rules.SQUADS:
+            unit = h["unit"] or None
+            h["squad"] = next((k for k, v in rules.SQUADS.items() if unit in v["members"] and not v.get("land")), "")
         track(h)
         out.append(dict(h, name=NAMES.get(h["unit"], str(h["unit"]))))
     try:
@@ -115,7 +120,7 @@ def snapshot():
     except OSError:
         lines = []
     log = [x for x in lines if not NOISE.search(x)][-400:]
-    return {"heroes": out, "log": log, "meta": meta}
+    return {"heroes": out, "log": log, "meta": meta, "squads": {k: v["zh"] for k, v in rules.SQUADS.items()}}
 
 
 class H(BaseHTTPRequestHandler):

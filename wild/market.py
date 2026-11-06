@@ -5,18 +5,16 @@ from . import api
 
 
 def _me(unit):
-    """A read that retries (rate limits and hiccups return nothing)."""
-    for _ in range(10):
-        m, _ = api.me(unit)
-        if m:
-            return m
-        time.sleep(5)
+    """Read once; the API client handles transport retries."""
+    m, _ = api.me(unit)
+    if m:
+        return m
     raise RuntimeError("cannot read %s" % unit)
 
 
 def listings(goods):
     code, r = api.call("GET", "/world/market?goods=%s&sort=price" % goods)
-    return r.get("listings") or [] if code == 200 else []
+    return r["listings"] if code == 200 and isinstance(r.get("listings"), list) else None
 
 
 def buy(unit, goods, qty, max_each=3):
@@ -26,11 +24,15 @@ def buy(unit, goods, qty, max_each=3):
     for _ in range(6):  # `home` takes about 20 seconds: wait until we are in the camp
         if m["ring"] == "camp":
             break
-        api.act(unit, {"action": "home"})
+        api.act(unit, {"action": "home", "why": "buying %s: the market works only in the camp" % goods})
         time.sleep(22)
         m = _me(unit)
     bought = 0
-    for l in listings(goods):
+    offers = listings(goods)
+    if offers is None:
+        api.warning("[%s] market listings could not be read" % api.who(unit))
+        return bought
+    for l in offers:
         if bought >= qty:
             break
         m = _me(unit)

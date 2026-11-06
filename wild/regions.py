@@ -8,7 +8,7 @@ CAMP = rules.MAP_CAMP
 
 
 def sector(x, y, parts=4):
-    """Which of `parts` equal slices of the circle round the camp (128,128) the point lies in, counted from east (0 deg)
+    """Which of `parts` equal slices of the circle round the camp (256,256 on the 512 map) the point lies in, counted from east (0 deg)
     towards south (y grows downward)."""
     angle = (math.degrees(math.atan2(y - CAMP[1], x - CAMP[0])) + 360) % 360
     return int(angle // (360 / parts))

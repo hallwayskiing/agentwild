@@ -21,6 +21,7 @@ try:   # the last snapshot comes back with the process: the dashboard is not emp
     with open(PATH, encoding="utf-8") as _f:
         _old = json.load(_f)
     _heroes.update(_old.get("heroes") or {})
+    _heroes.pop("513", None)
     _meta.update(_old.get("meta") or {})
 except (OSError, ValueError):
     pass
@@ -62,6 +63,7 @@ def _write():
     if time.time() - _last[0] < 3:
         return
     _last[0] = time.time()
+    _heroes.pop("513", None)
     data = {"heroes": _heroes, "meta": _meta, "notes": {str(k): v for k, v in _notes.items()}, "at": time.time()}
     tmp = PATH + ".tmp"
     try:
@@ -74,6 +76,7 @@ def _write():
 
 def update(unit, m, squad=""):
     w = (m.get("worn") or {}).get("weapon") or {}
+    offhand = (m.get("worn") or {}).get("offhand") or {}
     tool = (m.get("worn") or {}).get("tool") or {}
     bag = m.get("bag") or {}
     key = str(unit or 0)
@@ -86,6 +89,8 @@ def update(unit, m, squad=""):
             "mats": {k: bag[k] for k in MATS if bag.get(k)},
             "power": (m.get("gear_score") or {}).get("power"),
             "weapon": w.get("base"), "weapon_level": w.get("level"),
+            "offhand": offhand.get("base"), "offhand_level": offhand.get("level"),
+            "offhand_dur": offhand.get("durability"), "offhand_max": offhand.get("durability_max"),
             "tool": tool.get("base"), "tool_dur": tool.get("durability"), "tool_max": tool.get("durability_max"),
             "down": bool(m.get("down")) or (m.get("hp") or 1) <= 0,
             "at": time.time()}

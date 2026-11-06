@@ -12,6 +12,7 @@ wild/rules.py.
 """
 import argparse
 import json
+import os
 import re
 import threading
 import time
@@ -117,12 +118,12 @@ def gear_groups(parties):
 def plan():
     """What runs: the hunting squads, the queues (restored from the last run first), the hand orders, the gear rounds,
     the Abyss watch, the way into the tribe and the skill.md watch."""
+    api.info("[system] wild.py daemon started / restarted (PID %d)" % os.getpid())
     queue.restore()
     parties = squads()
     jobs = {p.name: p.run for p in parties}
     jobs.update({
         "abyss": abyss.watch,                               # everybody >= L7 (or abyss.go): bank points, go in
-        "coins": gear.coin_loop,                            # every 5 minutes: coins above 50, and runes/stones/gems, of the heroes beside the main character go to it
         "ladder": ladder.watch,                             # 19:30 (UTC+8) every evening: all heroes join the main character, the squad ladder
         "route": route.watch,                               # route.json and "[route] ... SAFE / closed" lines
         "land": landwatch.watch,                            # every 10 minutes: the corrupted land open in the meadow at levels 1-6 -> the main character and the lord go there
@@ -131,6 +132,8 @@ def plan():
         "dispatch": queue.dispatch,                         # orders that could not run yet start when they can
         "skill": watch.loop,                                # "[SKILL UPDATE]" when skill.md changes
     })
+    if rules.AUTO_COLLECT_MAIN:
+        jobs["coins"] = gear.coin_loop
     ts = [threading.Thread(target=guarded, args=(n, f), daemon=True) for n, f in jobs.items()]
     for t in ts:
         t.start()

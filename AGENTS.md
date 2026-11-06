@@ -9,7 +9,7 @@ this file is the map of **our** code and of the parts of the game that the code 
 ## Hard rules (never break these)
 
 - Never read, print or log `.env` / the API key (`wild/api.py` is the only reader).
-- The demon lord's worn weapon is locked (`rules.LOCKED_SLOTS`). Do not touch 929's unidentified dagger. Teleport
+- The demon lord's worn weapon is locked (`rules.LOCKED_SLOTS`). Teleport
   (`rules.TELEPORT`) only on the owner's word.
 - The owner's standing orders live in **`wild/rules.py`** and nowhere else; a rule changes there (and in `describe()`), then restart.
 - One `wild.py run` process only. Orders go through `orders.txt`, never by starting a second process.
@@ -17,7 +17,7 @@ this file is the map of **our** code and of the parts of the game that the code 
 ## The game, as far as the code needs it
 
 **World.** A 512×512 map; the camp is at (256,256). Ring radii: camp ≤30, meadow ≤72, forest ≤128,
-highlands ≤180, ashlands ≤224, ruins ≤252. The checked-in `worldmap.json` still contains the old 256×256 map. Creatures live in rings (see `bestiary.py`); level grows with the ring. Strong
+highlands ≤180, ashlands ≤224, ruins ≤252. `worldmap.json` is the 512×512 map (`tools/worldmap.py` fetches it from `GET /world/map`; `harvest.py` reads its size, centre and ring edges from it). Creatures live in rings (see `bestiary.py`); level grows with the ring. Strong
 creatures (4+ levels above the walker) attack within ~3 tiles.
 
 **Units.** The *main character* (unit `None`, id 926, level ~12, gold hunter) is the account; heroes are acted for with
@@ -35,14 +35,17 @@ blow** gets the XP and the drops, so a squad has helpers soften it and one *fini
 health and an affix (swift, chilling, shielded, enraged). `combat.py` models blows from the recorded fights (`combat.jsonl`)
 to decide whether a fight is won before it starts and when to stop (`safe_round`).
 **Death**: lose 1/5 of bag goods, 1/5 durability of worn pieces, 1/10 XP; currencies and gems are kept; the hero wakes at the totem.
-Being ambushed: fight back if the model says it is winnable (≥20% hp left), else `home` (`ambush.py`).
+Being ambushed: fight back if the model says it is winnable (≥30% hp left), else `home` (`ambush.py`).
 
 **Health.** Rest at the camp/tribe heals; bread 20, roast, stew, **bandage 35** (`eat` with `item`), stew 60. Foods and
 bandages come from the quartermaster (deeds): bread 100 deeds/5, bandage 150 deeds/3.
 
 **Gear.** Worn slots (weapon, head, chest, legs, hands, feet, amulet, ring, tool). Quality: plain < runed < treasured < mythic
-(set). Each slot can change at most once per 5 minutes (HTTP 409 "changed lately" is harmless). Repair costs coins (or `with:
-dust`); a broken piece counts for nothing. Currencies (`whetstone`, `oraclestone`, runes, seals ...) are applied with
+(set). Each slot can change at most once per 5 minutes (HTTP 409 "changed lately" is harmless). Repair: in the field only a
+broken piece is repaired and only in coins (`care.auto_repair`); at the camp or on the tribe's land every worn piece under 20%
+durability (`rules.DUST_BELOW`) is repaired with dust, and a tribe visit tops the hero's dust up to `rules.DUST_KEEP` (30,
+about three repair rounds — a piece costs 3-5 dust) out of the tribe store, which the main character's surplus dust fills
+(`tribe.restock_dust` / `share_dust`). A broken piece counts for nothing. Currencies (`whetstone`, `oraclestone`, runes, seals ...) are applied with
 `{"action":"use","currency":..,"item":ID}`; gems with `socket`. We never use them by ourselves (`USE_CURRENCIES`).
 
 **Tribe HALL.** Totem (341,265), chief = the main character. The store and the training ground work only on the tribe land
@@ -50,7 +53,7 @@ dust`); a broken piece counts for nothing. Currencies (`whetstone`, `oraclestone
 Buildings (storehouse, mill, quarry, infirmary, workbench ... all built) are raised with wood/stone/ore;
 mill and quarry pay +130 wood / +130 stone into the store roughly once an hour. Level 3 needs wood 1000, stone 800, ore 200
 (+bone/herb/hide, already enough). Store: 40 slots at level 2, 1000 wood or stone a slot. Training: 4 points → XP, daily limit.
-Every tribe visit (`tribe.deposit_all`): deposit materials first, top bread and meat up to 5 each, then deposit any food over 5; bandages are never deposited. Coins: nobody carries over 30 — the excess goes to the tribe treasury and a shortfall is topped up from it (`rules.COIN_KEEP`).
+Every tribe visit (`tribe.deposit_all`): deposit materials first, top bread and meat up to 5 each, then deposit any food over 5; bandages are never deposited. Coins: nobody carries over 30 — the excess goes to the tribe treasury, and nothing is topped up from it (only the chief may take coins out) (`rules.COIN_KEEP`).
 
 **Daily and timed things.** Daily chest (bank mode `pay` = the "80% tier") after 00:00 UTC+8 (`care.claim_chest`); squad
 ladder at 19:30 UTC+8 (`ladder.py`); the **Abyss** (off unless `abyss.go` exists); **corrupted land**: every two hours a
@@ -70,13 +73,13 @@ never move the same hero.
 - **Squads (`hunt.Squad`)** run only for members with an explicit `hunt` order: read members → heal (items) / repair / identify → pick a finisher (lowest level
   first) → pick the best creature in the squad's region and rings (level ≤ finisher+3, XP per HP and per step) → helpers walk
   and soften it, the finisher kills it → talents → repeat. No target: wait 30 s and **drift** to the squad's centre.
-  Food healing comes first: a hurt member eats/heals with items, and only if still below 40% queues `recover`. Then, when depositable goods (wood, stone, hide, ore …) exceed 20 or training quota remains (either one is enough) it heads to the tribe directly via the forest waypoint — no camp rest first — and trains while healing there; with neither it goes home and rests in the camp. The interrupted `hunt` order resumes afterwards. Bandages are never auto-restocked (`rules.AUTO_RESTOCK_BANDAGE` off).
+  Food healing comes first: a hurt member eats/heals with items, and only if still below 50% queues `recover`. Then, when depositable goods (wood, stone, hide, ore …) exceed 20 or training quota remains (either one is enough) it heads to the tribe directly via the forest waypoint — no camp rest first — and trains while healing there, leaving for the hunt again the moment health passes 90% (`rules.HEALED`); with neither it goes home and rests in the camp — and the recovery order ends the moment health passes 90%, even while the way to the tribe stays shut (a running `recover` order keeps the squad from acting for that hero: waiting at full health froze every squad on 2026-11-05). The interrupted `hunt` order resumes afterwards. Bandages are never auto-restocked (`rules.AUTO_RESTOCK_BANDAGE` off).
 - **Regions (`regions.py`)** keep squads apart: `west`/`east` (forest), `sec0..sec3` quarters of the circle round the camp
   (meadow pairs), `land` (the corrupted land).
 - **Corrupted land (`landwatch.py`)**: `me.corrupted_land` gives the phase and `ends_at`, so the next start (every 2 h) is
   computed and the watcher looks the moment it opens (fallback: every 10 min until one has been seen). If it is open (or
   its guardian is up), in the meadow, levels 1-6, and the
-  main character and the lord are both free (no lease), set `STATE["on"]`: the `corrupt` squad takes them (the forest squads
+main character and the lord are both free (no lease), set `STATE["on"]`: the `astral` squad takes them (the other squads
   skip them), and they go back when it ends or an order takes one of them. Before it opens (`stage`), they wait like a
   recovery: the watcher queues `land-stage`, which reuses the tribe trip — worthwhile (goods over 20 or hurt) heroes go
   to the tribe to store, resupply and heal, the rest wait in the camp; the wait ends when the land is due.
@@ -98,6 +101,7 @@ never move the same hero.
 | `AGENTS.md`, `ROUTE.md` | This map; the recorded way into the tribe land. |
 | `skill_latest.md`, `skill_changes.txt` | The game manual (baseline) and the diffs `watch.py` found. |
 | `tools/handover.py` | One-off: every hero at the camp hands its depositable goods to the main character. |
+| `tools/worldmap.py` | Fetches the world definition (`GET /world/map`) into `worldmap.json`; run it when the size of the world changes. |
 | `wild/rules.py` | **All policy**: squads (members, regions, centres), level range, health/food thresholds, tribe store, gear, Abyss, corrupted land; `describe()` prints it in Chinese. |
 | `wild/api.py` | The only HTTP client: throttle, `call`, `act` (logs `home` reasons, marks own fights), `me`, `ap_all`, `who` (log name). Reads the key from `.env`. |
 | `wild/hunt.py` | `Squad`: the hunting loop described above (target choice, fights, ambush handling, drift, bounties, gear/food care hooks). |

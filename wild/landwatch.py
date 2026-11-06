@@ -33,17 +33,24 @@ except (OSError, ValueError):
 
 def _read():
     """me.corrupted_land ({} when there is none, None when the read failed)."""
-    for _ in range(3):
-        code, r = api.call("GET", "/world/me")
-        if code == 200:
-            return (r.get("me") or {}).get("corrupted_land") or {}
-        time.sleep(3)
-    return None
+    code, r = api.call("GET", "/world/me")
+    if code != 200 or not isinstance(r.get("me"), dict):
+        return None
+    return r["me"].get("corrupted_land") or {}
 
 
 def _ours(land):
     cfg = rules.CORRUPT_LAND
-    return land.get("ring") == cfg["ring"] and list(land.get("levels") or []) == cfg["levels"]
+    ring = land.get("ring")
+    rings = cfg.get("rings") or ((cfg.get("ring"),) if cfg.get("ring") else ("meadow", "forest"))
+    if ring not in rings:
+        return False
+    lvls = list(land.get("levels") or [])
+    if not lvls:
+        return False
+    # Only check max level <= 12
+    max_lv = max(lvls)
+    return max_lv <= cfg.get("max_level", 12)
 
 
 def _worth_it(land):
@@ -51,12 +58,11 @@ def _worth_it(land):
 
 
 def _next_is_ours():
-    """Is the land due at _next[0] of our kind? They alternate (every other one is the lesser forest land): the same kind as the
-    last one seen when an even number of periods lies between, the other kind when odd. Unknown: no."""
-    if not _next[0] or not _kind["start"]:
+    """Is the land due at _next[0] of our kind? Since both 1-6 and 6-12 lands are now taken, lands in our target ring are always our kind.
+    If period is active, return True whenever a land is scheduled."""
+    if not _next[0]:
         return False
-    n = round((_next[0] - _kind["start"]) / rules.CORRUPT_LAND["period"])
-    return _kind["target"] == (n % 2 == 0)
+    return True
 
 
 def _free():
@@ -84,13 +90,14 @@ def _update_stage():
     due = _next[0] - time.time()
     want = bool(not STATE["on"] and _next_is_ours() and -cfg["grace"] < due <= cfg["stage"])
     if want and not STATE["stage"]:
-        api.notice("[land] a land of our kind is due in %d min: the main character and the lord wait for it (the tribe when worthwhile, else the camp)" % max(0, due // 60))
+        api.info("[land] a land of our kind is due in %d min: the main character and the lord wait for it (the tribe when worthwhile, else the camp)" % max(0, due // 60))
         from . import queue
         for u in cfg["units"]:
+            # (the owner, 2026-11-05): ??????????????hunting??????????????????????
             if queue.hunting(u):
                 queue.add(u, "land-stage", "resume-hunt", prio=9)
     elif STATE["stage"] and not want:
-        api.info("[land] the wait in the camp is over")
+        api.debug("[land] the wait in the camp is over")
     STATE["stage"] = want
 
 
@@ -113,7 +120,7 @@ def check():
         AREA[:] = [land["x"], land["y"], land.get("r", 7) + rules.CORRUPT_LAND["reach"]]
         if not STATE["on"] and _free():
             STATE["on"] = True
-            api.notice("[land] open in the %s at (%s,%s), levels %s, %d minutes left: the main character and the lord go there together" % (
+            api.info("[land] open in the %s at (%s,%s), levels %s, %d minutes left: the main character and the lord go there together" % (
                 land["ring"], land["x"], land["y"], land["levels"], left // 60))
         if STATE["on"] and not _free():
             STATE["on"] = False
@@ -123,12 +130,14 @@ def check():
         key = land.get("ends_at")
         if _seen[0] != key:
             _seen[0] = key
-            api.info("[land] skipped: %s in the %s, levels %s, phase %s (wanted %s, %s)" % (
+            cfg = rules.CORRUPT_LAND
+            wanted_rings = "/".join(cfg.get("rings", ("meadow", "forest")))
+            api.debug("[land] skipped: %s in the %s, levels %s, phase %s (wanted %s, max level %s)" % (
                 land.get("ring") and "land", land.get("ring"), land.get("levels"), land.get("phase"),
-                rules.CORRUPT_LAND["ring"], rules.CORRUPT_LAND["levels"]))
+                wanted_rings, cfg.get("max_level", 12)))
     if STATE["on"]:
         STATE["on"] = False
-        api.notice("[land] over or changed: the main character and the lord are back in the forest")
+        api.info("[land] over or changed: the main character and the lord are back in the forest")
     return 0, land
 
 

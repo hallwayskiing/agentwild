@@ -150,10 +150,11 @@ _FAILED = re.compile(r": (0|[45]\d\d)(\s|$)")   # a status code that is not a su
 
 
 def log(level, text):
-    """One log line: `LEVEL text` (wild.py puts the time in front). DEBUG routine chatter, INFO what was done, NOTICE a result (kill, built, claimed),
-    WARNING something odd or bad (deaths, refusals, trips home), ERROR a failure."""
+    """One log line: `LEVEL text` (wild.py puts the time in front).
+    Standard levels: DEBUG, INFO, WARNING, ERROR.
+    """
     level = level.upper()
-    if level in ("INFO", "NOTICE") and _FAILED.search(text):   # "...: 409 error text": whatever the caller thought, the call failed
+    if level == "INFO" and _FAILED.search(text):   # "...: 409 error text": whatever the caller thought, the call failed
         level = "WARNING"
     print("%-7s %s" % (level, text), flush=True)
 
@@ -167,7 +168,7 @@ def info(text):
 
 
 def notice(text):
-    log("NOTICE", text)
+    log("INFO", text)
 
 
 def warning(text):
@@ -214,6 +215,23 @@ def wait_busy(m):
     w = iso_wait((m or {}).get("busy_until"))
     if w > 0:
         time.sleep(w + 1)
+
+
+def wait_result(r):
+    """Wait until an act response is ready (from ready_in_seconds or busy_until)."""
+    if not isinstance(r, dict):
+        return
+    sec = r.get("ready_in_seconds")
+    if sec is None:
+        sec = (r.get("me") or {}).get("ready_in_seconds")
+    if sec is not None and sec > 0:
+        time.sleep(sec + 0.5)
+        return
+    busy = r.get("busy_until") or (r.get("me") or {}).get("busy_until")
+    if busy:
+        w = iso_wait(busy)
+        if w > 0:
+            time.sleep(w + 1)
 
 
 def clean(r):

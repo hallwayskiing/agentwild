@@ -3,6 +3,7 @@ resource: `gather resource=...` walks to the nearest node by itself, so each rou
 waits when a strong creature stands near it. Health below HP_MIN waits at the camp; the way home (8 points) is kept.
 The bag is emptied at the tribe by the usual visit (`gather` order: deposit_all)."""
 import datetime
+import json
 import os
 import threading
 import time
@@ -29,17 +30,35 @@ NEAR = 4              # tiles: a beatable monster this close to the node (or the
 KILL_FLOOR = 0.2      # a monster is hunted when the model leaves the hero over this share of its health (the owner: 20%)
 
 
-RING_RADII = [15, 36, 64, 90, 112, 126]   # worldmap.json: radius from the middle (128,128) out to each ring's edge
 RING_NAMES = ["camp", "meadow", "forest", "highlands", "ashlands", "ruins"]
+RING_RADII = [30, 72, 128, 180, 224, 252]   # the 512 world's edges; worldmap.json is the authority (tools/worldmap.py fetches it)
 RING_RANK = {"camp": 0, "meadow": 0, "forest": 1, "highlands": 2, "ashlands": 3, "ruins": 4}
 NODE_CHAR = {"wood": "t", "stone": "s"}   # the node grid of worldmap.json (the copper veins lie in the highlands only)
 _meadow = {}
+_world = {}           # size, centre and ring edges of worldmap.json (the world grew to 512 tiles on 2026-11-05)
 MEADOW_FAIL = {}      # (unit, resource) -> until: the meadow had no standing node left in view: the forest is allowed meanwhile
 
 
+def world():
+    """(size, centre, ring edges) of worldmap.json, read once; the 512 defaults when the file is missing or old."""
+    if not _world:
+        size, rings = 512, list(RING_RADII)
+        try:
+            with open(os.path.join(api.HERE, "worldmap.json"), encoding="utf-8") as f:
+                d = json.load(f)
+            size = int(d.get("size") or size)
+            rings = [int(r) for r in (d.get("rings") or rings)]
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        _world.update(size=size, centre=(size // 2, size // 2), rings=rings)
+    return _world
+
+
 def ring_of(x, y):
-    r = ((x - 128) ** 2 + (y - 128) ** 2) ** 0.5
-    for edge, name in zip(RING_RADII, RING_NAMES):
+    w = world()
+    cx, cy = w["centre"]
+    r = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+    for edge, name in zip(w["rings"], RING_NAMES):
         if r <= edge:
             return name
     return "ruins"
@@ -50,13 +69,13 @@ def meadow_nodes(resource):
     if resource not in _meadow:
         out = []
         try:
-            import json as _json
             with open(os.path.join(api.HERE, "worldmap.json"), encoding="utf-8") as f:
-                grid = _json.load(f)["nodes"]
+                grid = json.load(f)["nodes"]
+            size = world()["size"]
             ch = NODE_CHAR.get(resource)
             for i, c in enumerate(grid):
                 if c == ch:
-                    x, y = i % 256, i // 256
+                    x, y = i % size, i // size
                     if ring_of(x, y) == "meadow":
                         out.append((x, y))
         except (OSError, ValueError, KeyError):
@@ -95,7 +114,7 @@ def kill(unit, m, weak):
     return True
 
 
-def _log(unit, text, level="INFO"):
+def _log(unit, text, level="DEBUG"):
     state.note(unit, text)
     api.log(level, "[harvest %s] %s" % (api.who(unit), text))
 
@@ -106,7 +125,7 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
     quota = int(quota or QUOTA.get(resource, 60))
     told = [0.0]
 
-    def say(text, level="INFO"):   # the same complaint at most every 5 minutes
+    def say(text, level="DEBUG"):   # the same complaint at most every 5 minutes
         if time.time() - told[0] > 300:
             told[0] = time.time()
             _log(unit, text, level)
@@ -135,7 +154,7 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
                 ambush.handle(unit, m, view, say=lambda t: _log(unit, t), flee=False)
         have = (m.get("bag") or {}).get(resource) or 0
         if have >= quota:
-            _log(unit, "has %d %s: done" % (have, resource))
+            _log(unit, "has %d %s: done" % (have, resource), level="INFO")
             if resource == "wood" and chain:   # (927 and 933 went hunting hurt at once and 927 fell): stone is the slow one, go on with it
                 resource, quota = "stone", QUOTA["stone"]
                 told[0] = 0.0
@@ -187,18 +206,8 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
                             time.sleep(5 if c0 == 200 else 30)
                             continue
                         MEADOW_FAIL[(unit, resource)] = time.time() + 600   # standing at the spot, nothing grows: give the meadow up for a while
-        if node:
-            around = monsters_near(view, node["x"], node["y"])
-            if node.get("dist", 0) <= 1:   # (standing at the node: those round the hero count too)
-                around = around or monsters_near(view, m["x"], m["y"])
-            weak = [t for t in around if ambush.can_fight_back(m, [t], KILL_FLOOR)[0]]
-            if weak and not ambush.can_fight_back(m, weak, KILL_FLOOR)[0]:
-                weak = []   # singly beatable, together not
-            if weak:   # beatable monsters beside the node (or the hero): killed first; the ones it cannot beat are left alone
-                _log(unit, "kills %s first (beatable, within %d tiles of the %s node)" % (
-                    ", ".join("%s L%s" % (t["kind"], t["level"]) for t in weak[:3]), NEAR, resource))
-                kill(unit, m, weak)
-                continue
+        # (the owner, 2026-11-05): ?????????????????
+        # ???????????????????? 19-32 ???? 21 ??????????????????????
         if node and unit != LORD and resource != "ore" and node.get("ring") not in SAFE_RINGS:   # (copper ore lies in the highlands only: ordered)
             # (930 walked to a highlands stone node and fell there with 0 points: only the lord goes that far out)
             say("the nearest %s node (%s,%s) lies in the %s: not for this hero, going home" % (
@@ -233,7 +242,8 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
         wt = r.get("walking_to") if isinstance(r, dict) else None
         if wt:
             state.target(unit, wt[0], wt[1], resource)
-        _log(unit, "%s (have %d/%d): %s %s" % (resource, have, quota, code, str(api.clean(r))[:200]))
+        _log_level = "INFO" if code == 200 else "DEBUG"
+        _log(unit, "%s (have %d/%d): %s %s" % (resource, have, quota, code, str(api.clean(r))[:200]), level=_log_level)
         if code == 400 and r.get("closest"):   # "no way there within 120 points": walk to the nearest tile the search reaches, then again
             code2, r2 = api.act(unit, {"action": "move", "to": r["closest"], "until_there": True})
             _log(unit, "the %s node is out of one walk: moving on toward it to %s: %s %s" % (resource, r["closest"], code2, "" if code2 == 200 else r2.get("error")))
@@ -250,8 +260,9 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
 # ends only when another order is queued for the hero.) The main character's copper goes to the lord's copper node.
 LOAD = 999                  # one round: this much in the bag (999 = never "full")
 WINDOW = (datetime.time(11, 20), datetime.time(12, 15))   # UTC: the ladder evening (19:20-20:15 UTC+8): the heroes stand by
-CAMP = (128, 128)           # the middle of the world
-ORE_NODE = {"xy": (91, 183)}   # the owner (2026-11-04): ALL ten heroes meet at this copper point in the forest (the others lie within 6 tiles of it) and mine there
+CAMP = (256, 256)           # the middle of the 512 world (worldmap.json: size // 2)
+ORE_NODE = {"xy": (182, 366)}   # the owner's copper point (2026-11-04) carried over to the 512 world (x2): a copper cluster in
+                                # the highlands, the nearest veins at (182,367)/(187,364)/(177,370), all ten heroes meet there
 
 
 def paused():

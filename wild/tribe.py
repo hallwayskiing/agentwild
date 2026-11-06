@@ -8,11 +8,18 @@ from . import api, care, nav, rules, state
 
 TAG = "HALL"
 LEADER = None   # the chief (the owner, 2026-11-05: the main character; was hero 931)
+HEAL_TRIP_MINUTES = 45   # how long a healing visit may rest: from rules.HOME_BELOW to rules.HEALED is 0.4 of max health at
+                         # 6 a minute (the lord, 545 hp: 36 minutes), so a plain 25 cut the big characters off half healed
+REPAIR_RETRY = {}  # failed repair trips wait before checking again
 
 
 def info():
     code, r = api.call("GET", "/world/tribes/" + TAG)
-    return r["tribe"] if code == 200 else None
+    if code != 200 or not isinstance(r.get("tribe"), dict):
+        if code == 200:
+            api.warning("[tribe] response has no valid tribe object")
+        return None
+    return r["tribe"]
 
 
 def building_done(building_id):
@@ -51,12 +58,12 @@ def build(kind, members=(), builder=LEADER):
         if tries > 12:   # (the server refuses them all the same way: enough)
             break
         code, r = api.act(builder, {"action": "build", "kind": kind, "at": at})
-        api.info("build %s at %s: %s %s" % (kind, at, code, r.get("error") or ""))
+        api.debug("build %s at %s: %s %s" % (kind, at, code, r.get("error") or ""))
         if code == 200:
             bid = r.get("building")
             for u in members:
                 code, r = api.act(u, {"action": "work", "building": bid})
-                api.info("  %s works on %s: %s %s" % (u, bid, code, r.get("error") or ""))
+                api.debug("  %s works on %s: %s %s" % (u, bid, code, r.get("error") or ""))
             return bid
     return None
 
@@ -87,25 +94,19 @@ def train_once(unit):
 # --- the store ----------------------------------------------------------------------------------------------------------
 def surplus(m, keep=rules.FOOD_KEEP):
     bag = m.get("bag") or {}
-    return {k: bag[k] - keep for k in ("bread", "meat", "roast") if bag.get(k, 0) > keep}
+    return {k: bag[k] - keep for k in ("bread", "meat") if bag.get(k, 0) > keep}
 
 
 def currencies(unit, m):
-    """{currency: amount} that goes into the store: runes, stones, whetstones, seals, dust, crystals, shards, gems; not
-    rules.KEEP_CURRENCIES."""
-    if not rules.STORE_CURRENCIES or not unit:   # the main character keeps its runes and gems (the owner, 2026-11-05)
-        return {}
-    bag = m.get("bag") or {}
-    names = {c["currency"] for c in m.get("currencies") or []} | {"dust", "crystal", "shard"}
-    names |= {k for k in bag if k.startswith(("gem_", "essence_"))}
-    keep = set(rules.KEEP_CURRENCIES)
-    return {k: bag[k] for k in names if bag.get(k) and k not in keep}
+    """{currency: amount} that goes into the store: 严格白名单下不自动存入任何通货/符文/宝石。"""
+    return {}
 
 
 def worth_storing(m):
-    """Does the bag hold enough to make a stop at the store worthwhile (materials, seeds, food over the limit)?"""
+    """Does the bag hold enough to make a stop at the store worthwhile (materials, seeds, surplus food/dust)?"""
     bag = m.get("bag") or {}
-    return sum(bag.get(k, 0) for k in rules.STORE_KINDS) + sum(surplus(m).values()) >= rules.WORTH_STORING
+    dust_surplus = max(0, bag.get("dust", 0) - rules.DUST_KEEP)
+    return sum(bag.get(k, 0) for k in rules.STORE_KINDS) + sum(surplus(m).values()) + dust_surplus >= rules.WORTH_STORING
 
 
 def depositable_goods(m):
@@ -115,75 +116,166 @@ def depositable_goods(m):
 
 
 def recover_goes_to_tribe(unit, m):
-    """Recovery heads to the tribe when either is enough on its own: depositable goods over
-    rules.RECOVER_TRIBE_GOODS, or training quota left today."""
-    return depositable_goods(m) > rules.RECOVER_TRIBE_GOODS or has_quota(unit)
+    """Recovery heads to the tribe when training quota is left today, or repair is due without dust.
+    (???????????????)"""
+    return bool(has_quota(unit) or care.repair_due(m, unit) and not (m.get("bag") or {}).get("dust", 0))
 
 
 def deposit_all(unit):
-    """On the tribe's land, in the owner's order: the materials (and the heroes' currencies) go in first, then
-    bread and meat are topped up to rules.FOOD_KEEP each, then any food still over that goes in too. Bandages
-    are never deposited: they stay in the bag for healing."""
+    """严格白名单存仓：肉、面包和符尘多存少补，其余8种白名单材料全存。熟肉、绷带、符文留在身上。"""
+    if not balance_supplies(unit):
+        return False
     m, _ = api.me(unit)
+    if not m:
+        return False
     api.wait_busy(m)
     bag = (m or {}).get("bag") or {}
     items = {k: bag[k] for k in rules.STORE_KINDS if bag.get(k)}
-    runes = currencies(unit, m or {})
-    if items or runes:
-        code, r = api.act(unit, {"action": "deposit", "items": dict(items, **runes)})
-        if code != 200 and runes and items:  # the store may refuse the currencies: the goods still go in
-            api.warning("[%s] store refused %s: %s %s" % (api.who(unit), runes, code, r.get("error")))
-            runes = {}
-            code, r = api.act(unit, {"action": "deposit", "items": items})
-        api.info("[%s] deposited %s: %s %s" % (api.who(unit), dict(items, **runes), code, "" if code == 200 else r.get("error")))
-    restock_food(unit)
+    if items:
+        code, r = api.act(unit, {"action": "deposit", "items": items})
+        api.debug("[%s] deposited %s: %s %s" % (api.who(unit), items, code, "" if code == 200 else r.get("error")))
+        if code != 200:
+            return False
+        m, _ = api.me(unit)
+        if not m:
+            return False
+        api.wait_busy(m)
+    balance_coins(unit, m)
+    return True
+
+
+def balance_supplies(unit):
+    """多存少补：仅对面包、肉和符尘执行多存少补。"""
+    sizes = {"dust": 20, "bread": 50, "meat": 50}
     m, _ = api.me(unit)
     if not m:
-        return
+        return False
+    bag = m.get("bag") or {}
+    if all((bag.get(k, 0) or 0) == target for k, target in rules.SUPPLY_KEEP.items()):
+        return True
+    t = info()
+    if not t:
+        return False
+    for item in ("dust", "bread", "meat"):
+        if item not in rules.SUPPLY_KEEP:
+            continue
+        bag, store, slots = m.get("bag") or {}, t.get("store") or {}, t.get("store_slots") or {}
+        spare = max(0, (bag.get(item, 0) or 0) - rules.SUPPLY_KEEP[item])
+        if not spare:
+            continue
+        free = max(0, (slots.get("slots") or 0) - (slots.get("slots_used") or 0))
+        stored = store.get(item, 0) or 0
+        capacity = free * sizes.get(item, 50) + ((-stored) % sizes.get(item, 50) if stored else 0)
+        amount = min(spare, capacity)
+        if not amount:
+            api.warning("[%s] store full: cannot deposit %d surplus %s" % (api.who(unit), spare, item))
+            continue
+        api.wait_busy(m)
+        code, r = api.act(unit, {"action": "deposit", "items": {item: amount}})
+        api.debug("[%s] deposits %d %s: %s %s" % (api.who(unit), amount, item, code, r.get("error") or ""))
+        if code != 200:
+            return False
+        m, _ = api.me(unit)
+        t = info()
+        if not m or not t:
+            return False
+    bag, store = m.get("bag") or {}, t.get("store") or {}
+    take = {k: min(max(0, target - (bag.get(k, 0) or 0)), store.get(k, 0) or 0)
+            for k, target in rules.SUPPLY_KEEP.items()}
+    take = {k: v for k, v in take.items() if v > 0}
+    if take:
+        api.wait_busy(m)
+        code, r = api.act(unit, {"action": "withdraw", "items": take})
+        err = r.get("error") or ""
+        if code == 403 and "takes at most" in err:
+            import re
+            m_left = re.search(r"(\d+)\s+left today", err)
+            pts_left = int(m_left.group(1)) if m_left else 0
+            api.debug("[%s] daily store quota limited (%d left): skipped full restock" % (api.who(unit), pts_left))
+            if pts_left > 0:
+                partial = {}
+                rem = pts_left
+                for k, v in take.items():
+                    cost = 2 if k in ("ore", "copper_ore", "iron_ore", "hide", "bone", "herb") else 1
+                    can_take = min(v, rem // cost)
+                    if can_take > 0:
+                        partial[k] = can_take
+                        rem -= can_take * cost
+                if partial:
+                    api.wait_busy(m)
+                    c2, r2 = api.act(unit, {"action": "withdraw", "items": partial})
+                    api.debug("[%s] partial restock %s: %s %s" % (api.who(unit), partial, c2, r2.get("error") or ""))
+            return True
+        api.debug("[%s] restocks supplies %s: %s %s" % (api.who(unit), take, code, err))
+        return code == 200
+    return True
+
+
+def repair_camp(unit):
+    from . import queue
+    if not queue._go_home(unit, "broken equipment: return to the camp smith"):
+        return False
+    while True:
+        m, _ = api.me(unit)
+        if not m:
+            return False
+        if not care.auto_repair(unit, m):
+            api.wait_busy(m)
+            care.auto_equip(unit, m)
+            care.auto_salvage(unit, m)
+            return True
+        time.sleep(3)
+
+
+def repair_trip(unit, force=False):
+    """Reach the workbench, supply dust and repair before resuming the interrupted hunt."""
+    if not go(unit, 0, force):
+        return False
+    if unit is None:
+        nav.walk(unit, rules.TRIBE_WORKBENCH, 2, force=force)
+        m, _ = api.me(unit)
+        while m and care.auto_repair(unit, m):
+            time.sleep(3)
+            m, _ = api.me(unit)
+    if not deposit_all(unit):
+        return False
+    nav.walk(unit, rules.TRIBE_WORKBENCH, 2, force=force)
+    while True:
+        m, _ = api.me(unit)
+        if not m:
+            return False
+        if not care.auto_repair(unit, m):
+            break
+        time.sleep(3)
+    if not balance_supplies(unit):
+        return False
+    m, _ = api.me(unit)
+    if not m:
+        return False
     api.wait_busy(m)
-    extra = surplus(m)
-    if extra:
-        code, r = api.act(unit, {"action": "deposit", "items": extra})
-        api.info("[%s] deposited surplus food %s: %s %s" % (api.who(unit), extra, code, "" if code == 200 else r.get("error")))
-    balance_coins(unit, m)
+    care.auto_equip(unit, m)
+    if care.repair_due(m, unit):
+        api.warning("[%s] repair trip could not fix enough broken gear; waiting for dust" % api.who(unit))
+        REPAIR_RETRY[unit] = time.monotonic() + 300
+        return False
+    REPAIR_RETRY.pop(unit, None)
+    return True
 
 
 def balance_coins(unit, m):
-    """Carry at most rules.COIN_KEEP coins: the excess goes into the tribe treasury, a shortfall is topped
-    up from it (only as far as the treasury reaches; taking coins out may be refused for a hero who is not
-    the chief, which is logged and leaves the rest of the visit alone)."""
+    """Carry at most rules.COIN_KEEP coins: the excess goes into the tribe treasury. A shortfall is left alone
+    (the owner, 2026-11-05): only the chief may take coins out of the treasury, so topping a hero up is a refusal."""
     have = (m or {}).get("coins") or 0
     if have > rules.COIN_KEEP:
         code, r = api.act(unit, {"action": "deposit", "coins": have - rules.COIN_KEEP})
-        api.info("[%s] put %d coins in the treasury (carries %d): %s %s" % (
+        api.debug("[%s] put %d coins in the treasury (carries %d): %s %s" % (
             api.who(unit), have - rules.COIN_KEEP, rules.COIN_KEEP, code, "" if code == 200 else r.get("error")))
-    elif have < rules.COIN_KEEP:
-        take = min(rules.COIN_KEEP - have, (info() or {}).get("coins") or 0)
-        if take > 0:
-            code, r = api.act(unit, {"action": "withdraw", "coins": take})
-            if code == 200:
-                api.info("[%s] took %d coins from the treasury (carries %d)" % (api.who(unit), take, have + take))
-            else:
-                api.warning("[%s] cannot take %d coins from the treasury: %s %s" % (api.who(unit), take, code, r.get("error")))
-
-
-def restock_food(unit):
-    m, _ = api.me(unit)
-    store = (info() or {}).get("store") or {}
-    bag = (m or {}).get("bag") or {}
-    want = rules.FOOD_KEEP
-    take = {k: min(want - bag.get(k, 0), store.get(k, 0)) for k in ("meat", "bread")
-            if bag.get(k, 0) < want and store.get(k, 0) > 0}
-    if take:
-        code, r = api.act(unit, {"action": "withdraw", "items": take})
-        api.info("[%s] took %s from the store: %s %s" % (api.who(unit), take, code, "" if code == 200 else r.get("error")))
 
 
 # --- going there ------------------------------------------------------------------------------------------------------
 def recover(unit, force=False):
-    """Heal a hurt hunter. When depositable goods exceed rules.RECOVER_TRIBE_GOODS or training quota remains
-    (either one is enough), go to the tribe and heal there, straight via the forest waypoint with no camp
-    rest first; when neither holds, go home and rest in the camp until rules.HEALED."""
+    """Heal a hurt hunter. When training quota remains or repair is due without dust, go to the tribe and heal there,
+    straight via the forest waypoint with no camp rest first; when neither holds, go home and rest in the camp until rules.HEALED."""
     from . import queue
     while True:
         if queue.waiting(unit):
@@ -195,23 +287,34 @@ def recover(unit, force=False):
         if m.get("hp", 0) <= 0:
             time.sleep(60)
             continue
+        if m.get("ring") == "camp":
+            api.wait_busy(m)
+            if care.auto_repair(unit, m):
+                time.sleep(3)
+                fresh, _ = api.me(unit)
+                if fresh:
+                    api.wait_busy(fresh)
+                    care.auto_equip(unit, fresh)
+                care.auto_salvage(unit, fresh)
+                continue
         if nav.at_tribe(m):
-            return visit(unit, heal=True, train=99, patience=0, force=force)
+            return visit(unit, heal=True, train=99, patience=0, max_minutes=HEAL_TRIP_MINUTES, force=force)
         if recover_goes_to_tribe(unit, m):
             if m.get("ring") == "camp":
-                if not force and (not nav.can_reach_tribe(m) or not path_safe() or m.get("ap", 0) < rules.TRIP_MIN_AP):
-                    if not nav.can_reach_tribe(m) and m["hp"] >= m["max_hp"] * rules.HEALED:
-                        return True   # no way out exists: healed in the camp, the trip is impossible anyway
-                    state.note(unit, "营地等待回部落")
+                if not force and (not nav.can_reach_tribe(m) or m.get("ap", 0) < rules.TRIP_MIN_AP):
+                    if m["hp"] >= m["max_hp"] * rules.HEALED:
+                        return True
+                    state.note(unit, "????AP???")
+                    care.eat(unit, m)
                     time.sleep(30)
                     continue
-            elif not force and (not path_safe() or m.get("ap", 0) < rules.TRIP_MIN_AP):
-                if not queue._go_home(unit):   # hurt in the field and the tribe trip cannot start: wait safely in the camp
+            elif not force and m.get("ap", 0) < rules.TRIP_MIN_AP:
+                if not queue._go_home(unit, "recovery: hurt in the field, AP low for tribe walk"):
                     return False
                 continue
-            return visit(unit, heal=True, train=99, patience=0, force=force)
+            return visit(unit, heal=True, train=99, patience=0, max_minutes=HEAL_TRIP_MINUTES, force=force)
         if m.get("ring") != "camp":
-            if not queue._go_home(unit):
+            if not queue._go_home(unit, "recovery: hurt in the field"):
                 return False
             continue
         if m["hp"] >= m["max_hp"] * rules.HEALED:
@@ -245,16 +348,16 @@ def stage_rest(unit, force=False):
             state.note(unit, "部落等待腐化之地")
             time.sleep(30)
             continue
-        if depositable_goods(m) > rules.RECOVER_TRIBE_GOODS or m["hp"] < m["max_hp"] * rules.HEALED:
+        if m["hp"] < m["max_hp"] * rules.HEALED:
             if go(unit, patience=0, force=force):
                 deposit_all(unit)
                 deposited = True
                 continue
-            if m.get("ring") != "camp" and not queue._go_home(unit):   # the way stayed closed: wait safely in the camp
+            if m.get("ring") != "camp" and not queue._go_home(unit, "the corrupted-land wait: home to rest in the camp"):
                 return False
             continue
         if m.get("ring") != "camp":
-            if not queue._go_home(unit):
+            if not queue._go_home(unit, "the corrupted-land wait: home to rest in the camp"):
                 return False
             continue
         state.note(unit, "营地等待腐化之地")
@@ -263,7 +366,7 @@ def stage_rest(unit, force=False):
 
 
 def path_safe():
-    from . import route
+    return True
     return route.safe()
 
 
@@ -278,7 +381,7 @@ def go(unit, patience=None, force=False, bail=None, min_hp=0, until=None):
         return True
     import sys as _sys, os as _os
     f = _sys._getframe(1)   # the owner (2026-11-04): every trip to the tribe is explained in the log
-    api.info("[tribe] %s walks to the tribe: called by %s.%s (hp %s/%s, ap %s)" % (
+    api.debug("[tribe] %s walks to the tribe: called by %s.%s (hp %s/%s, ap %s)" % (
         "main" if not unit else unit, _os.path.basename(f.f_code.co_filename), f.f_code.co_name, m["hp"], m["max_hp"], m["ap"]))
     if not nav.can_reach_tribe(m):
         api.warning("[%s] no waypoint into the tribe's rings yet" % (api.who(unit)))
@@ -296,23 +399,52 @@ def visit(unit, train=0, heal=False, patience=None, max_minutes=25, force=False,
     """
     if not go(unit, patience, force, bail):
         return False
-    deposit_all(unit)
+    if not deposit_all(unit):
+        return False
+    m, _ = api.me(unit)
+    if not m:
+        return False
+    if care.repair_due(m, unit):
+        nav.walk(unit, rules.TRIBE_WORKBENCH, 2, force=force)
+        while True:
+            m, _ = api.me(unit)
+            if not m:
+                return False
+            if not care.auto_repair(unit, m):
+                api.wait_busy(m)
+                care.auto_equip(unit, m)
+                care.auto_salvage(unit, m)
+                break
+            time.sleep(3)
+        if not balance_supplies(unit):
+            return False
     nav.walk(unit, nav.TRAINING, 2)
     trained, until = 0, time.time() + max_minutes * 60
     while time.time() < until:
+        from . import queue
+        if queue.waiting(unit):
+            return True
         m, _ = api.me(unit)
         if not m:
             time.sleep(15)
             continue
         healed = m["hp"] >= m["max_hp"] * rules.HEALED
-        if (trained >= train or not has_quota(unit)) and (not heal or healed):
-            break
+        if heal and healed:
+            break   # healed on the tribe land: back to hunting at once (the owner, 2026-11-05: it trained on past 90%)
+        if trained >= train or not has_quota(unit):
+            if not heal:
+                break   # a plain training trip: the count or the day's quota is used up
+            # a healing trip with the day's training used up: rest on the land until rules.HEALED (or max_minutes)
         if care.eat(unit, m):
             time.sleep(6)
             continue
-        care.dust_repair(unit, m)   # (the owner, 2026-11-05) under 30% durability: repaired with dust at the camp or the tribe
+        may_repair = bool((m.get("bag") or {}).get("dust")) and (
+            m.get("ring") == "camp" or nav.dist(m, rules.TRIBE_WORKBENCH) <= 2)
+        if care.auto_repair(unit, m):
+            time.sleep(3)
+            continue
         if has_quota(unit) and (trained < train or heal and not healed):  # training while the land heals
-            fresh, _ = api.me(unit)
+            fresh, _ = api.me(unit) if may_repair else (m, None)
             if not fresh:
                 time.sleep(15)
                 continue
@@ -327,12 +459,16 @@ def visit(unit, train=0, heal=False, patience=None, max_minutes=25, force=False,
                 api.warning("[%s] training failed (%s): stopping this visit" % (api.who(unit), code))
                 return False
             state.note(unit, "部落训练 %s/%s" % (t.get("trained"), t.get("most")))
-            api.info("[%s] trains at the tribe (hp %s/%s): %s %s/%s" % (api.who(unit), m["hp"], m["max_hp"], code, t.get("trained"), t.get("most")))
+            api.debug("[%s] trains at the tribe (hp %s/%s): %s %s/%s" % (api.who(unit), m["hp"], m["max_hp"], code, t.get("trained"), t.get("most")))
         else:
             api.debug("[%s] resting on the tribe land hp %s/%s" % (api.who(unit), m["hp"], m["max_hp"]))
         time.sleep(62)
-    api.act(unit, {"action": "home"})
-    api.info("[%s] done at the tribe: back to the camp" % (api.who(unit)))
+    if not balance_supplies(unit):
+        return False
+    from . import queue
+    if not queue._go_home(unit, "the tribe visit is done: stored, trained and healed"):
+        return False
+    api.debug("[%s] done at the tribe: back to the camp" % (api.who(unit)))
     return True
 
 # --- mustering: everybody at the camp with enough points, then off to the tribe together --------------------------------
@@ -370,7 +506,7 @@ def muster(unit, ap=70, squad=False):
     while True:
         m, _ = api.me(unit)
         if m and m["hp"] > 0 and not nav.at_tribe(m) and m["ring"] != "camp" and m["ap"] >= 8:
-            api.act(unit, {"action": "home"})
+            api.act(unit, {"action": "home", "why": "the muster: waits in the camp with the squad"})
         from . import queue
         if queue.waiting(unit):   # another order is queued behind the muster (`gather`): the others have left already
             return True
@@ -403,7 +539,7 @@ def raise_totem(unit):
             code, r = api.act(unit, {"action": "work", "building": totem["id"]})
             if time.time() - last[0] > 600 or code != 200:
                 last[0] = time.time()
-                api.info("[%s] works on the totem: %s %s" % (api.who(unit), code, str(api.clean(r))[:160]))
+                api.debug("[%s] works on the totem: %s %s" % (api.who(unit), code, str(api.clean(r))[:160]))
         time.sleep(240)
 
 
@@ -442,7 +578,7 @@ def gather(unit, force=False):
             if code == 200:
                 t = r.get("today") or {}
                 state.note(unit, "部落训练 %s/%s" % (t.get("trained"), t.get("most")))
-                api.info("[%s] trains at the tribe (hp %s/%s): %s/%s" % (api.who(unit), m["hp"], m["max_hp"], t.get("trained"), t.get("most")))
+                api.debug("[%s] trains at the tribe (hp %s/%s): %s/%s" % (api.who(unit), m["hp"], m["max_hp"], t.get("trained"), t.get("most")))
         time.sleep(62)
     api.info("[%s] gather ends: another order is waiting" % (api.who(unit)))
     return True
@@ -530,7 +666,7 @@ def deposit_for(unit, kinds):
         qty = min(max(0, need.get(r, 0) - store.get(r, 0)), bag.get(r, 0))
         while qty > 0:
             code, res = api.act(unit, {"action": "deposit", "items": {r: qty}})
-            api.info("[%s] deposits %s %s for the buildings: %s %s" % (api.who(unit), qty, r, code, "" if code == 200 else str(res.get("error"))[:120]))
+            api.debug("[%s] deposits %s %s for the buildings: %s %s" % (api.who(unit), qty, r, code, "" if code == 200 else str(res.get("error"))[:120]))
             if code == 200:
                 break
             qty //= 2
@@ -562,7 +698,7 @@ def _build_by_walking(kind, members, builder):
         mm, _v = api.me(builder)
         api.wait_busy(mm)
         code, r = api.act(builder, {"action": "build", "kind": kind, "at": [tx, ty]})
-        api.info("build %s from (%s,%s) at (%s,%s): %s %s" % (kind, sx, sy, tx, ty, code, r.get("error") or ""))
+        api.debug("build %s from (%s,%s) at (%s,%s): %s %s" % (kind, sx, sy, tx, ty, code, r.get("error") or ""))
         if code in (200, 202):   # 202: queued behind the walk: it is placed a moment later, the building's id comes from the tribe's list
             bid = r.get("building")
             for _ in range(10):

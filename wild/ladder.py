@@ -49,21 +49,21 @@ def _together():
 
 def evening(start):
     code, r = api.act(None, {"action": "ladder", "do": "join", "mode": "solo"})
-    api.info("[ladder] solo signup: %s %s" % (code, str(api.clean(r))[:200]))
+    api.debug("[ladder] solo signup: %s %s" % (code, str(api.clean(r))[:200]))
     abyss.PAUSE.set()
     joined = []
     try:
         if _now() < start + FIGHT_AFTER:
             joined = abyss.assemble(before_join=_together)
-            api.info("[ladder] %d heroes walk with the main character: %s" % (len(joined), joined))
+            api.debug("[ladder] %d heroes walk with the main character: %s" % (len(joined), joined))
             if len(joined) < MIN_OTHERS:
                 api.warning("[ladder] too few heroes (need %d): squad not signed up" % MIN_OTHERS)
             else:
                 code, r = api.act(None, {"action": "ladder", "do": "join", "mode": "squad"})
-                api.info("[ladder] squad signup: %s %s" % (code, str(api.clean(r))[:300]))
+                api.debug("[ladder] squad signup: %s %s" % (code, str(api.clean(r))[:300]))
         _sleep_until(start + RELEASE_AFTER)
         code, r = api.call("GET", "/world/ladder")
-        api.notice("[ladder] after the tournament: %s %s" % (code, str(r)[:600]))
+        api.info("[ladder] after the tournament: %s %s" % (code, str(r)[:600]))
     finally:
         for u in joined:
             api.act(None, {"action": "detach", "hero": u})   # the heroes go back to their squads
