@@ -118,7 +118,7 @@ SQUADS = {
 
 
 
-    "ember": {"zh": "Ember", "members": [926], "hero_goal": 15, "rings": ("forest",), "region": "eastS", "center": (378, 256),
+    "ember": {"zh": "Ember", "members": [], "hero_goal": 15, "rings": ("forest",), "region": "eastS", "center": (378, 256),
 
 
 
