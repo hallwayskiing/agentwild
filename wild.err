@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "D:\Codes\baw\agentwild\wild.py", line 261, in <module>
-    main()
-  File "D:\Codes\baw\agentwild\wild.py", line 210, in main
-    plan()
-  File "D:\Codes\baw\agentwild\wild.py", line 120, in plan
-    api.notice("[system] wild.py daemon started / restarted (PID %d)" % os.getpid())
-                                                                        ^^
-NameError: name 'os' is not defined. Did you mean: 'ts'? Or did you forget to import 'os'?

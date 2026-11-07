@@ -301,7 +301,8 @@ def auto_equip(unit, m):
             if _equip_cooldown.get((unit, slot), 0) > time.monotonic():
                 continue
         d = comparison.get("power")
-        better = d > 0 if d is not None else power(g) > power(worn.get(g["slot"]))
+        is_empty = worn.get(g["slot"]) is None
+        better = (is_empty or power(g) > power(worn.get(g["slot"]))) if slot in ("weapon", "offhand") else (is_empty or (d > 0 if d is not None else power(g) > power(worn.get(g["slot"]))))
         if better:
             code, r = api.act(unit, {"action": "equip", "item": g["id"], "wait": False})
             api.debug("  %s equips %s L%s %s: %s %s" % (api.who(unit), g["base"], g["level"], g["rarity"], code,
@@ -310,6 +311,9 @@ def auto_equip(unit, m):
                 with _equip_lock:
                     _equip_cooldown[(unit, slot)] = time.monotonic() + 300
                 worn[g["slot"]] = g
+                fresh_m, _ = api.me(unit)
+                if fresh_m and fresh_m.get("ring") == "camp":
+                    manage_camp_stash(unit, fresh_m)
                 return
             if code == 409 and "changed lately" in str(r.get("error", "")):
                 match = re.search(r"changes again in\s+(\d+)\s*s", str(r.get("error", "")))
@@ -332,7 +336,10 @@ def identify(unit=None):
             continue
         level = g.get("level", 0)
         rarity = g.get("rarity")
-        # 自动鉴定的等级限制只对珍藏生效
+        # 普通/符刻不再鉴定
+        if rarity in ("plain", "普通", "runed", "符文"):
+            continue
+        # 珍藏装备高于10级才鉴定
         if rarity in ("treasured", "珍藏") and level < rules.IDENTIFY_MIN_LEVEL:
             continue
         cost = 5 + 2 * level
@@ -353,6 +360,175 @@ def identify(unit=None):
         if not m:
             return 0, identified
     return code, identified
+
+
+def auto_identify(unit, m):
+    """Automatically identify equipment at camp:
+    - Treasured gear only if level > 10 (高于10级珍藏)
+    - Plain/runed/etc. if coins allow
+    - Coin reserve respected (rules.IDENTIFY_KEEP_COINS)
+    """
+    if m.get('ring') != 'camp':
+        return False
+    unidentified = [g for g in m.get('gear_bag') or [] if g.get('unidentified')]
+    if not unidentified:
+        return False
+
+    identified_any = False
+    for g in unidentified:
+        rarity = g.get('rarity')
+        lvl = g.get('level', 0) or 0
+        # 普通/符刻不再鉴定
+        if rarity in ('plain', '普通', 'runed', '符文'):
+            continue
+        # 珍藏装备高于10级才鉴定
+        if rarity in ('treasured', '珍藏') and lvl <= 10:
+            continue
+        cost = 5 + 2 * lvl
+        if m.get('coins', 0) - cost < rules.IDENTIFY_KEEP_COINS:
+            break
+        code, r = api.act(unit, {'action': 'identify', 'item': g['id']})
+        if code == 200:
+            identified_any = True
+            m['coins'] = m.get('coins', 0) - cost
+            api.info('[identify] %s identified %s %s L%s (#%s)' % (
+                api.who(unit), rarity, g.get('base'), lvl, g['id']
+            ))
+            g['unidentified'] = False
+            if isinstance(r, dict) and r.get('item'):
+                g.update(r['item'])
+    return identified_any
+
+
+def is_upgrade_for_any_teammate(g, exclude_unit=None):
+    """True if gear g would be an upgrade for at least one active teammate."""
+    from . import state, rules
+    if not g or g.get('broken') or g.get('unidentified'):
+        return False
+    slot = g.get('slot')
+    if not slot or slot == 'tool':
+        return False
+    g_p = power(g)
+    g_lvl = g.get('level', 0) or 0
+    for tm_u in rules.HERO_CONFIGS:
+        if exclude_unit is not None and tm_u == exclude_unit:
+            continue
+        tm_h = state._heroes.get(str(tm_u or 0))
+        if not tm_h:
+            continue
+        tm_lvl = tm_h.get('level', 1) or 1
+        if g_lvl > tm_lvl + 2:
+            continue
+        tm_worn = tm_h.get('worn') or {}
+        if not compatible_hands(g, {'worn': tm_worn}):
+            continue
+        tm_w = tm_worn.get(slot)
+        tm_p = power(tm_w) if tm_w else 0
+        if g_p > tm_p:
+            return True
+    return False
+
+
+def manage_camp_stash(unit, m):
+    """
+    Called every time returning to camp (m['ring'] == 'camp'):
+    1. Unstash: Check tribe_stash (and personal stash) for any piece that beats unit's currently worn gear;
+       unstash it and auto_equip.
+    2. Stash: Check gear_bag for any piece that is lower power than unit's worn gear, but higher power than
+       ANY teammate's worn gear; deposit into tribe_stash (action: 'stash', tribe=True).
+    """
+    from . import state, rules
+
+    if m.get('ring') != 'camp':
+        return False
+
+    worn = m.get('worn') or {}
+    locked = set(rules.LOCKED_SLOTS.get(unit, ()))
+
+    # --- 1. 检查仓库里有没有高于自己身上的装备并取出 ---
+    # 优先检查部落公用仓库（tribe_stash），其次检查个人私有仓库（stash）
+    candidates = []
+    for s in list(m.get('tribe_stash') or []):
+        candidates.append((s, True))
+    for s in list(m.get('stash') or []):
+        candidates.append((s, False))
+
+    upgrades_by_slot = {}
+    for s, is_tribe in candidates:
+        slot = s.get('slot')
+        if not slot or slot in locked or slot == 'tool':
+            continue
+        if s.get('broken') or s.get('unidentified'):
+            continue
+        if s.get('level', 0) > m.get('level', 1) + 2:
+            continue
+        if not compatible_hands(s, m):
+            continue
+        my_w = worn.get(slot)
+        my_p = power(my_w) if my_w else 0
+        s_p = power(s)
+        if s_p > my_p:
+            if slot not in upgrades_by_slot or s_p > upgrades_by_slot[slot][0]:
+                upgrades_by_slot[slot] = (s_p, s, is_tribe)
+
+    for slot, (s_p, s, is_tribe) in upgrades_by_slot.items():
+        if len(m.get('gear_bag') or []) >= m.get('bag_max', 40):
+            break
+        act_body = {'action': 'unstash', 'item': s['id']}
+        if is_tribe:
+            act_body['tribe'] = True
+        code, r = api.act(unit, act_body)
+        if code == 200:
+            api.info('[stash] %s unstashed %s %s L%s (#%s, power %.1f > worn %.1f from %s stash)' % (
+                api.who(unit), s.get('rarity'), s.get('base'), s.get('level'), s['id'], s_p,
+                power(worn.get(slot)) if worn.get(slot) else 0,
+                'tribe' if is_tribe else 'personal'
+            ))
+            if is_tribe:
+                m['tribe_stash'] = [x for x in (m.get('tribe_stash') or []) if x.get('id') != s['id']]
+            else:
+                m['stash'] = [x for x in (m.get('stash') or []) if x.get('id') != s['id']]
+            bag_list = list(m.get('gear_bag') or [])
+            bag_list.append(s)
+            m['gear_bag'] = bag_list
+            auto_equip(unit, m)
+            worn = m.get('worn') or {}
+
+    # --- 2. 检查背包：低于自己身上但高于任意队友的，存入部落公用仓库供队友自取 ---
+    tribe_stash_max = m.get('tribe_stash_max', 40)
+    current_tribe_stash = len(m.get('tribe_stash') or [])
+
+    for g in list(m.get('gear_bag') or []):
+        slot = g.get('slot')
+        if not slot or slot in locked or slot == 'tool':
+            continue
+        if g.get('broken') or g.get('unidentified'):
+            continue
+
+        my_w = worn.get(slot)
+        my_p = power(my_w) if my_w else 0
+        g_my_p = power(g)
+
+        # 必须低于自己身上（如果自己没穿或者比身上的好，则属于自己自用）
+        if my_w is None or g_my_p >= my_p:
+            continue
+
+        # 检查是否高于任意一个队友身上的对应部位
+        if is_upgrade_for_any_teammate(g, exclude_unit=unit):
+            if current_tribe_stash >= tribe_stash_max:
+                break
+            code, r = api.act(unit, {'action': 'stash', 'item': g['id'], 'tribe': True})
+            if code == 200:
+                api.info('[stash] %s stashed %s %s L%s (#%s, power %.1f < my worn %.1f) into tribe stash for teammates' % (
+                    api.who(unit), g.get('rarity'), g.get('base'), g.get('level'), g['id'], g_my_p, my_p
+                ))
+                current_tribe_stash += 1
+                m['gear_bag'] = [x for x in (m.get('gear_bag') or []) if x.get('id') != g['id']]
+                ts_list = list(m.get('tribe_stash') or [])
+                ts_list.append(g)
+                m['tribe_stash'] = ts_list
+
+    return True
 
 
 def repair(unit, item_id):
@@ -479,10 +655,11 @@ def plain_salvage_candidates(m):
         if g.get("unidentified"):
             continue
 
-        # 2. 装备槽非空：若该装备评分高于已穿戴装备，严禁分解
+        # 2. 装备槽非空：若该装备评分或战力高于已穿戴装备，严禁分解
         s = g.get("slot")
         if s and s != "tool" and s in worn_scores:
-            if score(g, m) > worn_scores[s]:
+            worn_g = (m.get("worn") or {}).get(s)
+            if score(g, m) > worn_scores[s] or (worn_g and power(g) > power(worn_g)):
                 continue
 
         rarity = g.get("rarity")
@@ -497,6 +674,7 @@ def plain_salvage_candidates(m):
 def auto_salvage(unit, m):
     """At the camp or tribe, automatically salvage all plain gear in gear_bag,
     keeping at least 1 pickaxe and 1 axe in the bag besides worn gear."""
+    manage_camp_stash(unit, m)
     from . import nav
     candidates = plain_salvage_candidates(m)
     if not candidates:

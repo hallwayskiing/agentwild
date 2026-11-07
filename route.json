@@ -20,232 +20,26 @@
   ]
  },
  "safe_clearance": 4,
- "updated": "2026-11-06 16:38:54",
+ "updated": "2026-11-06 20:49:22",
  "assessment": {
   "forest": {
-   "clearance": 15.0,
-   "blockers": []
+   "clearance": 2.0,
+   "blockers": [
+    {
+     "kind": "fox",
+     "level": 11,
+     "at": [
+      358,
+      255
+     ],
+     "dist": 2.0
+    }
+   ]
   }
  },
  "best": "forest",
  "safe_now": true,
  "history": [
-  {
-   "t": "2026-11-06 09:19:00",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 09:29:01",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 09:30:06",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 09:38:27",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 09:59:15",
-   "unit": 933,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 09:59:21",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 10:01:04",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 10:01:56",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 10:03:20",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 10:12:20",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 10:16:12",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 10:19:43",
-   "unit": 934,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 11:21:52",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 11:25:09",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 11:35:36",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 11:50:50",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:03:46",
-   "unit": 934,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:18:03",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:20:53",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:24:39",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:36:20",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:45:10",
-   "unit": 933,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:55:00",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 12:56:30",
-   "unit": 932,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:00:28",
-   "unit": 934,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:04:35",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:10:14",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:20:43",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:21:40",
-   "unit": 925,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:25:59",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:36:48",
-   "unit": 929,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:47:34",
-   "unit": null,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:56:03",
-   "unit": 934,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:57:19",
-   "unit": 927,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 13:59:44",
-   "unit": 930,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
-  {
-   "t": "2026-11-06 14:02:15",
-   "unit": 931,
-   "entry": "forest",
-   "outcome": "arrived"
-  },
   {
    "t": "2026-11-06 14:18:16",
    "unit": 932,
@@ -387,6 +181,222 @@
   {
    "t": "2026-11-06 16:38:54",
    "unit": 934,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 16:40:20",
+   "unit": 928,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:00:10",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:05:41",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:14:34",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:23:53",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:27:22",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:36:51",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:40:21",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:56:55",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 17:57:44",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:00:17",
+   "unit": 934,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:00:34",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:12:41",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:12:45",
+   "unit": null,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:33:05",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:44:50",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:47:28",
+   "unit": 928,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 18:59:28",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:08:41",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:11:52",
+   "unit": null,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:12:21",
+   "unit": 934,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:29:29",
+   "unit": 930,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:37:20",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:39:12",
+   "unit": 931,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:44:05",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:54:14",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 19:57:21",
+   "unit": 929,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:05:42",
+   "unit": 928,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:06:44",
+   "unit": 925,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:06:53",
+   "unit": 934,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:10:28",
+   "unit": 933,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:21:17",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:22:24",
+   "unit": 932,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:40:56",
+   "unit": null,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:46:04",
+   "unit": 927,
+   "entry": "forest",
+   "outcome": "arrived"
+  },
+  {
+   "t": "2026-11-06 20:49:22",
+   "unit": 925,
    "entry": "forest",
    "outcome": "arrived"
   }

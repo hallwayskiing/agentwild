@@ -41,7 +41,7 @@ def _together():
     """Everybody stands at the camp beside the main character, still on their own: one pool for the gear (the best pieces to
     the best heroes) and the coins above 50 to the main character, then they join."""
     try:
-        gear.balance([[u for sq in rules.SQUADS.values() for u in sq["members"]]], everything=True)
+        gear.balance([list(rules.HERO_CONFIGS.keys())], everything=True)
         gear.collect_coins()
     except Exception as e:
         api.error("[ladder] gear/coins error %r" % e)

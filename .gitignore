@@ -1,0 +1,12 @@
+﻿__pycache__/
+*.pyc
+.pytest_cache/
+wild.log
+wild.err
+state.json
+queue.json
+orders.txt
+land.json
+daily.json
+xp_last.json
+.env

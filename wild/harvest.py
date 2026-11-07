@@ -137,7 +137,7 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
         if not m:
             time.sleep(30)
             continue
-        state.update(unit, m, next((n for n, sq in rules.SQUADS.items() if unit in sq["members"]), ""))   # (the dashboard)
+        state.update(unit, m, api.who(unit))   # (the dashboard)
         if care.has_heal_items(m) and 0 < m["hp"] < rules.HEAL_BELOW * m["max_hp"]:
             care.heal_with_items(unit, m)   # the main character and the lord carry bread: it heals them in the field (no points)
         care.claim_chest(unit, m)   # the daily chest, when the main character happens to be in the camp after 12:00 (UTC+8)
@@ -185,26 +185,10 @@ def harvest(unit, resource, quota=None, chain=True, until=None):
             time.sleep(60)
             continue
         node = pick_node(view, m, resource, unit)
-        if resource in NODE_CHAR and (node is None or RING_RANK.get(node.get("ring"), 9) > 0) and m["ring"] not in ("highlands", "ashlands", "ruins"):
-            # the meadow first (the owner): no meadow node stands in view: walk to the nearest meadow spot of this resource; once
-            # there and still nothing stands in view, the meadow is spent for now and the forest is allowed for 10 minutes
-            if MEADOW_FAIL.get((unit, resource), 0) < time.time():
-                if m["ring"] == "meadow" and ring_of(m["x"], m["y"]) == "meadow" and not any(
-                        t.get("type") == "node" and t.get("gives") == resource for t in (view or {}).get("things") or []):
-                    MEADOW_FAIL[(unit, resource)] = time.time() + 600
-                    _log(unit, "no %s node stands in the meadow round here: the forest is allowed for 10 min" % resource)
-                else:
-                    spots = meadow_nodes(resource)
-                    if spots:
-                        mx, my = min(spots, key=lambda p: max(abs(p[0] - m["x"]), abs(p[1] - m["y"])))
-                        if max(abs(mx - m["x"]), abs(my - m["y"])) > 3:
-                            c0, r0 = api.act(unit, {"action": "move", "to": [mx, my], "until_there": True})
-                            if c0 == 400 and r0.get("closest"):
-                                c0, r0 = api.act(unit, {"action": "move", "to": r0["closest"], "until_there": True})
-                            _log(unit, "heads for the meadow's %s spot (%s,%s) first: %s %s" % (resource, mx, my, c0, "" if c0 == 200 else str(r0.get("error"))[:70]))
-                            time.sleep(5 if c0 == 200 else 30)
-                            continue
-                        MEADOW_FAIL[(unit, resource)] = time.time() + 600   # standing at the spot, nothing grows: give the meadow up for a while
+        if not node:
+            _log(unit, "no real %s node detected in view or farther list: waiting 30s" % resource)
+            time.sleep(30)
+            continue
         # (the owner, 2026-11-05): 采矿与伐木安全范围限制
         # safe_rings 之外的资源点由主号和领主前往，其他英雄回营
         if node and unit != LORD and resource != "ore" and node.get("ring") not in SAFE_RINGS:   # (copper ore lies in the highlands only: ordered)
@@ -373,7 +357,7 @@ def run(unit, own):
             if not m or m["hp"] <= 0:
                 time.sleep(60)
                 continue
-            state.update(unit, m, next((n for n, sq in rules.SQUADS.items() if unit in sq["members"]), ""))
+            state.update(unit, m, api.who(unit))
             care.claim_chest(unit, m)
             if own == "ore" and unit in PICK_BUYERS and not has_pickaxe(m) and PICK_LISTINGS:
                 get_pickaxe(unit, m)

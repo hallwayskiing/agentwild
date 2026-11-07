@@ -40,6 +40,9 @@ RING_RADII = [30, 72, 128, 180, 224, 252]
 def ring_of(x, y):
     if x is None or y is None:
         return "camp"
+    from wild import nav
+    if nav.at_tribe({"x": x, "y": y}):
+        return "tribe"
     r = ((x - 256) ** 2 + (y - 256) ** 2) ** 0.5
     for edge, name in zip(RING_RADII, RING_NAMES):
         if r <= edge:
@@ -57,6 +60,7 @@ def live():
     if code != 200:
         return _cache["live"]
     m, now, out = r["me"], time.time(), {}
+    _cache["corrupted_land"] = m.get("corrupted_land") or {}
     roles = api.ap_all(600)   # grades and roles hardly change: one read in ten minutes
     w = (m.get("worn") or {}).get("weapon") or {}
     offhand = (m.get("worn") or {}).get("offhand") or {}
@@ -122,14 +126,16 @@ def clean_note(note):
             res_zh = {"ore": "铜矿", "wood": "木材", "stone": "石头"}.get(m.group(1), m.group(1))
             return "采集 %s (%s)" % (res_zh, m.group(2))
         return "工作中"
+    # Strip squad tag from note e.g. "狩猎待命(astral)" -> "狩猎待命"
+    note = re.sub(r"狩猎待命\([^)]+\)", "狩猎待命", note)
     # Strip raw status code prefix e.g. "200 "
     note = re.sub(r"^\d{3}\s+", "", note.strip())
     return note
 
 
-def task_zh(task_str, squad_zh=""):
+def task_zh(task_str):
     if not task_str:
-        return ("野外狩猎 · %s" % squad_zh) if squad_zh else "待命"
+        return "野外狩猎"
     parts = task_str.strip().split()
     is_force = False
     if parts and parts[0] == "force":
@@ -145,7 +151,7 @@ def task_zh(task_str, squad_zh=""):
         res = res_names.get(arg, arg or "资源")
         txt = "采集 %s" % res
     elif act == "hunt":
-        txt = ("野外狩猎 · %s" % squad_zh) if squad_zh else "野外狩猎"
+        txt = "野外狩猎"
     elif act in ("recover", "rest"):
         txt = "休整回血"
     elif act in ("home", "go-home"):
@@ -180,8 +186,8 @@ def snapshot():
             qdata = json.load(f)
     except (OSError, ValueError):
         qdata = {}
-    # Only keep current squad heroes (filters out dismissed units like 926)
-    valid_units = {u or 0 for sq in rules.SQUADS.values() for u in sq["members"]}
+    # Only keep current heroes (filters out dismissed units like 926)
+    valid_units = {u or 0 for u in rules.HERO_CONFIGS}
     heroes = {k: v for k, v in heroes.items() if (v.get("unit") or 0) in valid_units}
 
     for k, h in live().items():   # the fresh request wins over the worker's snapshot (xp, ring, notes and targets stay from it)
@@ -192,19 +198,23 @@ def snapshot():
     for h in sorted(heroes.values(), key=lambda h: (h["unit"] not in (0, 928), h["unit"])):
         if (h.get("unit") or 0) not in valid_units:
             continue
-        if h.get("squad") not in rules.SQUADS:
-            unit = h["unit"] or None
-            h["squad"] = next((k for k, v in rules.SQUADS.items() if unit in v["members"] and not v.get("land")), "")
-        sq_zh = rules.SQUADS.get(h["squad"], {}).get("zh", h.get("squad", ""))
+        h["squad"] = ""
         track(h)
         h["name"] = NAMES.get(h["unit"], str(h["unit"]))
         # Compute ring deterministically from coordinates
         h["ring"] = ring_of(h.get("x"), h.get("y"))
+        # Check if inside corrupted land
+        land = _cache.get("corrupted_land") or {}
+        if land and land.get("x") is not None and land.get("y") is not None and land.get("phase") in ("open", "guardian"):
+            reach = land.get("r", 7) + 5
+            hx, hy = h.get("x"), h.get("y")
+            if hx is not None and hy is not None and max(abs(hx - land["x"]), abs(hy - land["y"])) <= reach:
+                h["in_corrupted_land"] = True
         # Parse task from queue.json
         qinfo = qdata.get(str(h["unit"])) or {}
         running = qinfo.get("running")
-        h["queue_task"] = running or ("hunt" if h.get("squad") else "")
-        h["queue_zh"] = task_zh(running, sq_zh)
+        h["queue_task"] = running or "hunt"
+        h["queue_zh"] = task_zh(running)
         # Clean up note
         h["note"] = clean_note(h.get("note"))
         # Process target
@@ -224,7 +234,7 @@ def snapshot():
     except OSError:
         lines = []
     log = [x for x in lines if not NOISE.search(x)][-400:]
-    return {"heroes": out, "log": log, "meta": meta, "squads": {k: v["zh"] for k, v in rules.SQUADS.items()}}
+    return {"heroes": out, "log": log, "meta": meta, "squads": {}, "corrupted_land": _cache.get("corrupted_land") or {}}
 
 
 class H(BaseHTTPRequestHandler):

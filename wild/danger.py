@@ -49,15 +49,12 @@ def _save():
 
 
 def record_death(m):
-    """Somebody fell here: avoid the surroundings for hours, whatever the map of creatures says."""
-    with _lock:
-        _bans.append({"x": m["x"], "y": m["y"], "t": time.time()})
-        _save()
+    """Death site banning is completely removed per user request (2026-11-06)."""
+    pass
 
 
 def banned(x, y):
-    now = time.time()
-    return any(now - b["t"] < BAN_SECS and max(abs(b["x"] - x), abs(b["y"] - y)) <= BAN_RADIUS for b in _bans)
+    return False
 
 
 def dense(x, y, level):
@@ -71,10 +68,10 @@ def dense(x, y, level):
 
 
 def bad_zone(x, y, level):
-    """A place to stay out of: a death site or a crowd of strong creatures (never the tribe's own land)."""
+    """A place to stay out of: a crowd of strong creatures (never the tribe's own land)."""
     if max(abs(x - TOTEM[0]), abs(y - TOTEM[1])) <= rules.TRIBE_LAND:
         return False
-    return banned(x, y) or dense(x, y, level)
+    return dense(x, y, level)
 
 
 def _area(around):

@@ -27,5 +27,39 @@ class HuntDamageSplitTests(unittest.TestCase):
         self.assertTrue(res)
 
 
+    def test_rules_target_max_dist(self):
+        self.assertEqual(rules.TARGET_MAX_DIST, 25)
+
+    def test_all_squads_are_solo(self):
+        for name, sq in rules.SQUADS.items():
+            self.assertEqual(len(sq["members"]), 1, f"Squad {name} must have exactly 1 member")
+
+    def test_pick_target_uses_center_radius_25(self):
+        from wild import hunt
+        sq = hunt.Squad.__new__(hunt.Squad)
+        sq.center = (300, 300)
+        sq.view = {}
+        sq.close = None
+        sq.elites = True
+        sq.gone = {}
+        sq.skipped = {}
+        sq.idle = 0
+        sq.is_land_active = lambda uid: False
+        sq.region = lambda x, y: True
+        sq.rings = ("forest",)
+
+        # target 1: at (310, 310) -> distance from center (300, 300) is 10 <= 25.
+        t1 = {"id": 1, "kind": "wolf", "level": 12, "x": 310, "y": 310, "hp": 100}
+        # target 2: at (330, 300) -> distance from center (300, 300) is 30 > 25 (even if near fin!).
+        t2 = {"id": 2, "kind": "wolf", "level": 12, "x": 330, "y": 300, "hp": 100}
+
+        sq.fetch = lambda fin_id, fin: [t1, t2]
+
+        fin = {"level": 12, "ap": 50, "x": 328, "y": 300, "hp": 200, "max_hp": 200, "ring": "forest"}
+        ready = {925: fin}
+        res = sq.pick_target(925, fin, ready)
+        self.assertEqual([t["id"] for t in res], [1])
+
+
 if __name__ == "__main__":
     unittest.main()

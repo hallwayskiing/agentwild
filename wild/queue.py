@@ -46,9 +46,9 @@ from . import api, care, lease, rules
 
 
 
-FILE = "queue.json"
+FILE = os.path.join(api.HERE, "queue.json")   # (absolute: the process must not depend on the directory it was started from)
 
-ORDERS = "orders.txt"
+ORDERS = os.path.join(api.HERE, "orders.txt")
 
 TRIBE_ACTIONS = ("recover", "repair-tribe", "train", "deposit", "walk-tribe", "gather", "upgrade", "work", "withdraw", "build")   # orders that need the way into the tribe land
 
@@ -188,9 +188,14 @@ def _stay(unit):
         if m:
             care.claim_chest(unit, m)
             care.identify(unit)
+            care.manage_camp_stash(unit, m)
             care.auto_salvage(unit, m)
+            care.auto_equip(unit, m)
 
-        time.sleep(60)
+        for _ in range(60):
+            if waiting(unit):
+                break
+            time.sleep(1)
 
     return True
 
@@ -465,6 +470,114 @@ def _withdraw_coins(unit, arg):
     return True
 
 
+def _give_to_hero(giver, receiver, item_or_items):
+    """Hero `giver` steps close to `receiver` in camp, unequips if item is worn, and gives it to `receiver`."""
+    from . import care, nav
+    who_g = api.who(giver)
+    who_r = api.who(receiver)
+    if isinstance(item_or_items, (list, tuple)):
+        items = [int(x) for x in item_or_items]
+    else:
+        cleaned = str(item_or_items).replace("[", "").replace("]", "").replace(",", " ")
+        items = [int(x) for x in cleaned.split()]
+
+    # 1. Ensure both are in camp
+    for _ in range(30):
+        m_giver, _ = api.me(giver)
+        m_rec, _ = api.me(receiver)
+        if not m_giver or not m_rec:
+            time.sleep(3)
+            continue
+        if m_giver.get("ring") != "camp":
+            api.wait_busy(m_giver)
+            if m_giver.get("ap", 0) >= 8:
+                api.act(giver, {"action": "home", "why": "give items in camp"})
+            else:
+                time.sleep(10)
+                continue
+            time.sleep(3)
+            continue
+        if m_rec.get("ring") != "camp":
+            api.wait_busy(m_rec)
+            if m_rec.get("ap", 0) >= 8:
+                api.act(receiver, {"action": "home", "why": "receive items in camp"})
+            else:
+                time.sleep(10)
+                continue
+            time.sleep(3)
+            continue
+        break
+
+    # 2. Unequip target items if worn
+    m_giver, _ = api.me(giver)
+    worn = dict(m_giver.get("worn") or {})
+    for item_id in items:
+        for slot, it in worn.items():
+            if it.get("id") == item_id:
+                api.wait_busy(m_giver)
+                code, res = api.act(giver, {"action": "unequip", "slot": slot})
+                api.info("[give] %s unequipped %s (#%d): %s" % (who_g, slot, item_id, code))
+                time.sleep(1)
+                break
+
+    # 3. Walk to within distance 2
+    for _ in range(20):
+        m_giver, _ = api.me(giver)
+        m_rec, _ = api.me(receiver)
+        if not m_giver or not m_rec:
+            time.sleep(3)
+            continue
+        dist = max(abs(m_giver["x"] - m_rec["x"]), abs(m_giver["y"] - m_rec["y"]))
+        if dist <= 2:
+            break
+        if m_giver.get("ap", 0) < 1:
+            time.sleep(5)
+            continue
+        api.wait_busy(m_giver)
+        dx = m_rec["x"] - m_giver["x"]
+        dy = m_rec["y"] - m_giver["y"]
+        sx = m_giver["x"] + min(5, max(-5, dx))
+        sy = m_giver["y"] + min(5, max(-5, dy))
+        api.act(giver, {"action": "move", "to": [sx, sy]})
+        time.sleep(2)
+
+    # 4. Give items
+    to_name = "main" if receiver is None else str(receiver)
+    for item_id in items:
+        api.wait_busy(m_giver)
+        code, res = api.act(giver, {"action": "give", "to": to_name, "item": item_id})
+        api.info("[give] %s gave item #%d to %s: %s %s" % (who_g, item_id, who_r, code, "" if code == 200 else res.get("error")))
+        time.sleep(1)
+
+    # 5. Identify and auto-equip on receiver
+    m_rec, _ = api.me(receiver)
+    if m_rec:
+        care.identify(receiver)
+        fresh_rec, _ = api.me(receiver)
+        if fresh_rec:
+            care.auto_equip(receiver, fresh_rec)
+    return True
+
+
+def _unstash_item(unit, item_id):
+    who = api.who(unit)
+    m, _ = api.me(unit)
+    if not m:
+        return False
+    if m.get("ring") != "camp":
+        api.act(unit, {"action": "home", "why": "unstash at camp"})
+        time.sleep(3)
+    api.wait_busy(m)
+    code, res = api.act(unit, {"action": "unstash", "item": item_id})
+    api.info("[unstash] %s unstashed #%d: %s %s" % (who, item_id, code, "" if code == 200 else res.get("error")))
+    if code == 200:
+        from . import care
+        fresh_m, _ = api.me(unit)
+        if fresh_m:
+            care.auto_equip(unit, fresh_m)
+    return code == 200
+
+
 def _travel_waypoint(unit, ring):
 
     """Owner-ordered waypoint travel; resume the interrupted hunt after reaching the requested ring."""
@@ -562,6 +675,63 @@ def _runner(unit, action, arg, force=False):
     """The callable for an order (True when done, False when it could not run now), or None if the action is unknown."""
 
     from . import tribe
+
+    if action == "give-to":
+        parts = str(arg).split()
+        target = None if parts[0] in ("0", "main") else int(parts[0])
+        item_ids = [int(x) for x in parts[1:]]
+        return lambda: _give_to_hero(unit, target, item_ids)
+    if action == "unstash":
+        return lambda: _unstash_item(unit, int(arg))
+    if action in ("migrate-stash", "stash-to-tribe"):
+        def do_migrate():
+            who = api.who(unit)
+            m, _ = api.me(unit)
+            if not m or m.get("ring") != "camp":
+                return False
+            personal_stash = list(m.get("stash") or [])
+            for it in personal_stash:
+                api.wait_busy(m)
+                code, res = api.act(unit, {"action": "unstash", "item": it["id"]})
+                if code == 200:
+                    time.sleep(1)
+                    api.act(unit, {"action": "stash", "item": it["id"], "tribe": True})
+                    api.info("[stash] %s moved item #%d from personal to tribe stash" % (who, it["id"]))
+                    time.sleep(1)
+            return True
+        return do_migrate
+    if action == "equip":
+        item_id = int(arg)
+        def do_equip():
+            from . import care
+            care._equip_cooldown.clear()
+            m, _ = api.me(unit)
+            if not m:
+                return False
+            api.wait_busy(m)
+            code, r = api.act(unit, {"action": "equip", "item": item_id})
+            api.info("[%s] equip item #%d: %s %s" % (api.who(unit), item_id, code, "" if code == 200 else r.get("error")))
+            return code == 200
+        return do_equip
+    if action == "auto-equip":
+        def do_auto_equip():
+            from . import care
+            care.identify(unit)
+            for _ in range(10):
+                care._equip_cooldown.clear()
+                m, _ = api.me(unit)
+                if not m:
+                    break
+                old_worn = {s: g.get("id") for s, g in (m.get("worn") or {}).items()}
+                care.manage_camp_stash(unit, m)
+                care.auto_equip(unit, m)
+                fresh, _ = api.me(unit)
+                new_worn = {s: g.get("id") for s, g in (fresh.get("worn") or {}).items()} if fresh else {}
+                if new_worn == old_worn:
+                    break
+                time.sleep(1)
+            return True
+        return do_auto_equip
 
     if action == "hunt":
 
@@ -846,7 +1016,7 @@ def _runner(unit, action, arg, force=False):
             return True
         return detach_hero
 
-    if action == "rejoin" and unit is not None:
+    if action in ("rejoin", "join") and unit is not None:
 
         def rejoin_hero():
 
@@ -1498,7 +1668,9 @@ def read_orders():
 
                 for parts in lines:
 
-                    unit, rest = int(parts[0]) or None, parts[1:]
+                    u_str = parts[0]
+                    unit = None if u_str in ("0", "main", "none", "None") else int(u_str)
+                    rest = parts[1:]
 
                     force = rest[0] in ("force", "!") or rest[0].startswith("!")
 

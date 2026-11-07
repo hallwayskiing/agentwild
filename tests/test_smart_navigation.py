@@ -21,7 +21,7 @@ class SmartNavigationTests(unittest.TestCase):
 
     def test_plan_from_camp_to_tribe_chooses_forest_waypoint(self):
         m = {
-            "x": 256, "y": 256, "ring": "camp",
+            "x": 256, "y": 256, "ring": "camp", "coins": 50,
             "waypoints": [
                 {"ring": "meadow", "x": 307, "y": 256, "open": True},
                 {"ring": "forest", "x": 356, "y": 256, "open": True},

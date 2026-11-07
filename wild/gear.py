@@ -168,6 +168,8 @@ def hand_over(giver, receiver, items, heroes):
 def balance(groups, dry=False, everything=False):
     """One round (the timed one and the manual `wild.py gear` are the same): for every squad (a list of units), deal its
     gear out and hand over what changes hands between heroes standing within rules.GEAR_REACH of each other."""
+    if not dry and not getattr(rules, "AUTO_BALANCE_GEAR", True):
+        return []
     all_moves = []
     for members in groups:
         if len(set(members)) < 2:
@@ -300,9 +302,11 @@ def loop(groups):
                         care.spend_talents(u, m)
                         from . import nav
                         if m.get('ring') == 'camp' or nav.at_tribe(m):
+                            care.manage_camp_stash(u, m)
                             care.auto_salvage(u, m)
                 feed(groups)
-                balance(groups)
+                if getattr(rules, "AUTO_BALANCE_GEAR", True):
+                    balance(groups)
                 sell_surplus(groups)
         except Exception as e:
             api.error("[gear] error %r" % e)
@@ -319,7 +323,7 @@ def collect_coins():
     main, _ = api.me(None)
     if not main:
         return
-    for u in [u for sq in rules.SQUADS.values() for u in sq["members"] if u is not None]:
+    for u in [u for u in rules.HERO_CONFIGS if u is not None]:
         m, _ = api.me(u)
         if not m or m["hp"] <= 0 or _dist(m, main) > rules.GEAR_REACH:
             continue
@@ -339,7 +343,7 @@ def collect_valuables():
     main, _ = api.me(None)
     if not main:
         return
-    for u in [u for sq in rules.SQUADS.values() for u in sq["members"] if u is not None]:
+    for u in [u for u in rules.HERO_CONFIGS if u is not None]:
         m, _ = api.me(u)
         if not m or m["hp"] <= 0 or _dist(m, main) > rules.GEAR_REACH:
             continue
@@ -350,7 +354,7 @@ def collect_valuables():
 
 def collect_treasured():
     """All heroes beside main give all treasured gear in their bags to main."""
-    for u in [u for sq in rules.SQUADS.values() for u in sq["members"] if u is not None]:
+    for u in [u for u in rules.HERO_CONFIGS if u is not None]:
         try:
             give_treasured_to_main(u)
         except Exception as e:
@@ -395,3 +399,74 @@ def coin_loop(every=300):
         except Exception as e:
             api.error("[valuables] error %r" % e)
         time.sleep(every)
+
+
+SLOT_ZH = {
+    "weapon": "武器", "offhand": "副手", "head": "头盔", "helmet": "头盔", "chest": "胸甲",
+    "cuirass": "胸甲", "legs": "护腿", "greaves": "护腿", "feet": "鞋子", "treads": "鞋子",
+    "hands": "手套", "gauntlets": "手套", "ring": "戒指", "band": "戒指",
+    "amulet": "项链", "necklace": "项链", "tool": "工具"
+}
+RARITY_ZH = {
+    "plain": "普通", "common": "普通", "fine": "优秀", "treasured": "珍藏",
+    "runed": "符文", "set": "套装", "epic": "史诗", "legendary": "传说", "mythic": "神话"
+}
+
+
+def format_gear(g):
+    if not g:
+        return "无"
+    rarity = RARITY_ZH.get(g.get("rarity"), g.get("rarity") or "")
+    base = g.get("base") or "未知装备"
+    lvl = "L%s" % g.get("level", "?")
+    dur = ""
+    if g.get("durability") is not None:
+        dur = " [耐久 %s/%s]" % (g.get("durability"), g.get("durability_max", "?"))
+    pwr = " 战力:%s" % round(care.power(g), 1) if care.power(g) >= 0 else ""
+    extra = []
+    if g.get("unidentified"):
+        extra.append("未鉴定")
+    if g.get("broken"):
+        extra.append("已损坏")
+    stats = []
+    if g.get("damage"):
+        stats.append("攻击+%s" % g["damage"])
+    if g.get("armor"):
+        stats.append("护甲+%s" % g["armor"])
+    stat_str = (" (" + " ".join(stats) + ")") if stats else ""
+    extra_str = (" [" + " ".join(extra) + "]") if extra else ""
+    return f"【{rarity}】{base} {lvl}{stat_str}{pwr}{dur}{extra_str} (#{g.get('id', '?')})"
+
+
+def show_all_gear():
+    """Print all equipment (worn and in gear_bag) for every hero."""
+    units = list(rules.HERO_CONFIGS.keys())
+    print("正在拉取所有英雄装备状态...")
+    heroes = survey(units)
+    for u in units:
+        m = heroes.get(u)
+        name = api.who(u)
+        if not m:
+            print(f"\n=== {name}: 获取失败 ===")
+            continue
+        level = m.get("level", "?")
+        print(f"\n==================== 【{name}】 等级 L{level} ====================")
+        worn = m.get("worn") or {}
+        print("--- 【身上穿戴】 ---")
+        if not worn:
+            print("  (无任何装备)")
+        else:
+            for slot, g in worn.items():
+                slot_name = SLOT_ZH.get(slot, slot)
+                print(f"  {slot_name:>4}: {format_gear(g)}")
+
+        gear_bag = m.get("gear_bag") or []
+        print(f"--- 【背包携带】 ({len(gear_bag)} 件) ---")
+        if not gear_bag:
+            print("  (无任何备用装备)")
+        else:
+            for g in gear_bag:
+                slot = g.get("slot", "")
+                slot_name = SLOT_ZH.get(slot, slot)
+                print(f"  {slot_name:>4}: {format_gear(g)}")
+

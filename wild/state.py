@@ -67,7 +67,7 @@ def _write():
     _heroes.pop("513", None)
     _heroes.pop("926", None)
     from . import rules
-    valid = {str(u or 0) for sq in rules.SQUADS.values() for u in sq["members"]}
+    valid = {str(u or 0) for u in rules.HERO_CONFIGS}
     for k in list(_heroes.keys()):
         if k not in valid:
             _heroes.pop(k, None)
@@ -81,16 +81,49 @@ def _write():
         pass
 
 
+def get_ap_max(unit, m=None):
+    """Real-time or persisted ap_max for unit."""
+    if isinstance(m, dict):
+        val = m.get("ap_max") or m.get("max_ap")
+        if val:
+            _remember_ap_max(unit, val)
+            return val
+    with _lock:
+        val = (_heroes.get(str(unit or 0)) or {}).get("ap_max")
+        if val:
+            return val
+    # Fallback to live api.ap_all()
+    try:
+        data = api.ap_all()
+        val = (data.get(unit) or {}).get("ap_max")
+        if val:
+            _remember_ap_max(unit, val)
+            return val
+    except Exception:
+        pass
+    return 300
+
+
+def _remember_ap_max(unit, val):
+    key = str(unit or 0)
+    with _lock:
+        if key not in _heroes:
+            _heroes[key] = {"unit": unit or 0}
+        _heroes[key]["ap_max"] = val
+    _write()
+
+
 def update(unit, m, squad=""):
     w = (m.get("worn") or {}).get("weapon") or {}
     offhand = (m.get("worn") or {}).get("offhand") or {}
     tool = (m.get("worn") or {}).get("tool") or {}
     bag = m.get("bag") or {}
     key = str(unit or 0)
+    ap_cap = m.get("ap_max") or m.get("max_ap") or (_heroes.get(key) or {}).get("ap_max")
     with _lock:
         _heroes[key] = {
             "unit": unit or 0, "squad": squad, "level": m.get("level"), "xp": m.get("xp"), "xp_next": m.get("xp_next"),
-            "hp": m.get("hp"), "max_hp": m.get("max_hp"), "ap": m.get("ap"), "ap_max": m.get("ap_max"),
+            "hp": m.get("hp"), "max_hp": m.get("max_hp"), "ap": m.get("ap"), "ap_max": ap_cap,
             "food": m.get("food"), "ring": m.get("ring"), "x": m.get("x"), "y": m.get("y"), "coins": m.get("coins"),
             "bread": bag.get("bread"), "meat": bag.get("meat"), "roast": bag.get("roast"),
             "mats": {k: bag[k] for k in MATS if bag.get(k)},
@@ -99,6 +132,7 @@ def update(unit, m, squad=""):
             "offhand": offhand.get("base"), "offhand_level": offhand.get("level"),
             "offhand_dur": offhand.get("durability"), "offhand_max": offhand.get("durability_max"),
             "tool": tool.get("base"), "tool_dur": tool.get("durability"), "tool_max": tool.get("durability_max"),
+            "worn": m.get("worn") or {},
             "down": bool(m.get("down")) or (m.get("hp") or 1) <= 0,
             "at": time.time()}
         h = _heroes[key]

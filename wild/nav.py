@@ -200,7 +200,6 @@ def walk(unit, final, tol=2, stops=(), label=None, min_hp=0, patience=None, forc
         if m["hp"] <= 0 or m.get("down_until"):
             if not fell:   # once per fall (it lies there a while)
                 fell = True
-                danger.record_death(m)
                 route.record("fell", unit, m.get("ring"))
                 _fall_report(tag, m, a)
             time.sleep(60)
@@ -295,34 +294,57 @@ RING_AP_MULT = {
 }
 
 
+RING_NAMES = ["camp", "meadow", "forest", "highlands", "ashlands", "ruins"]
+RING_RADII = [30, 72, 128, 180, 224, 252]
+
+
 def estimate_walk_ap(from_pos, to_pos, ring=None):
-    """Estimate AP cost to walk between two coordinates using Chebyshev distance."""
-    d = max(abs(to_pos[0] - from_pos[0]), abs(to_pos[1] - from_pos[1]))
-    mult = RING_AP_MULT.get(ring, 1.25)
-    return round(d * mult, 1)
+    """Estimate AP cost to walk between two coordinates using step-by-step accumulation across map rings."""
+    x1, y1 = from_pos
+    x2, y2 = to_pos
+    d = max(abs(x2 - x1), abs(y2 - y1))
+    if d == 0:
+        return 0.0
+    total = 0.0
+    for step in range(1, d + 1):
+        x = x1 + (x2 - x1) * step / d
+        y = y1 + (y2 - y1) * step / d
+        r = ((x - 256) ** 2 + (y - 256) ** 2) ** 0.5
+        for edge, name in zip(RING_RADII, RING_NAMES):
+            if r <= edge:
+                total += RING_AP_MULT[name]
+                break
+        else:
+            total += 2.0
+    return round(total, 1)
 
 
 def plan_route(m, target_pos, target_name=None):
     """Evaluate candidate travel routes from m to target_pos (pure walk vs waypoint/home combinations).
-    Returns dict: {'name': str, 'ap': float, 'steps': list, 'desc': str} with the minimum AP cost."""
+    Prioritizes direct walking to conserve coins and daily free home quotas.
+    Returns dict: {'name': str, 'ap': float, 'steps': list, 'desc': str} with the minimum scored route."""
     cur = (m["x"], m["y"])
     cur_ring = m.get("ring", "meadow")
+    coins = m.get("coins", 0) or 0
     candidates = []
 
-    # 1. Candidate: Direct Walk
+    # 1. Candidate: Direct Walk (Default, no teleport, no coin/quota cost)
     direct_cost = estimate_walk_ap(cur, target_pos, cur_ring)
     candidates.append({
         "name": "direct_walk",
         "ap": direct_cost,
+        "score": direct_cost,
         "steps": [{"action": "walk", "to": target_pos}],
         "desc": "direct walk (%d tiles, ~%.1f AP)" % (max(abs(target_pos[0] - cur[0]), abs(target_pos[1] - cur[1])), direct_cost)
     })
 
     # 2. Candidate: Via Home (Camp)
+    # 50 AP penalty: only worthwhile when it saves at least 50 AP over walking
     already_at_camp = (cur_ring == "camp" or dist(m, WAYPOINTS["camp"]) <= 2)
     home_cost = 0.0 if already_at_camp else 8.0
     walk_from_camp = estimate_walk_ap(WAYPOINTS["camp"], target_pos, "meadow")
     via_home_total = round(home_cost + walk_from_camp, 1)
+    home_penalty = 0.0 if already_at_camp else 50.0
     home_steps = []
     if not already_at_camp:
         home_steps.append({"action": "home", "why": "smart navigation: via camp", "ap": 8.0})
@@ -330,11 +352,13 @@ def plan_route(m, target_pos, target_name=None):
     candidates.append({
         "name": "via_home",
         "ap": via_home_total,
+        "score": via_home_total + home_penalty,
         "steps": home_steps,
         "desc": "%s -> walk from camp (~%.1f AP)" % ("already in camp" if already_at_camp else "home (8 AP)", via_home_total)
     })
 
     # 3. Candidates: Via Waypoints (meadow, forest, highlands, etc.)
+    # Requires waypoint open. Waypoint travel itself costs 8 AP and 0 coins.
     open_rings = open_waypoints(m)
     for wp_name, wp_pos in WAYPOINTS.items():
         if wp_name == "camp" or wp_name not in open_rings:
@@ -343,6 +367,8 @@ def plan_route(m, target_pos, target_name=None):
         reach_wp_cost = 8.0 if can_travel_direct else 16.0
         walk_from_wp = estimate_walk_ap(wp_pos, target_pos, wp_name)
         wp_total = round(reach_wp_cost + walk_from_wp, 1)
+        # 30 AP penalty to prefer walking for nearby targets, but allow waypoint for distant cross-ring travel
+        wp_penalty = 0.0 if can_travel_direct else 30.0
 
         wp_steps = []
         if not can_travel_direct:
@@ -353,12 +379,13 @@ def plan_route(m, target_pos, target_name=None):
         candidates.append({
             "name": "via_waypoint_%s" % wp_name,
             "ap": wp_total,
+            "score": wp_total + wp_penalty,
             "steps": wp_steps,
             "desc": "%stravel %s (8 AP) -> walk (~%.1f AP)" % (
                 "" if can_travel_direct else "home (8 AP) -> ", wp_name, wp_total)
         })
 
-    best = min(candidates, key=lambda c: c["ap"])
+    best = min(candidates, key=lambda c: c["score"])
     return best
 
 

@@ -91,7 +91,7 @@ def train_once(unit):
     t = r.get("today") or {}
     if code in (200, 202) and t and t.get("trained", 0) >= t.get("most", 1 << 30):
         QUOTA_DONE[unit] = today()
-    elif code in (400, 403, 409) and any(s in str(r.get("error", "")).lower() for s in ("daily", "quota", "limit", "today")):
+    elif code in (400, 403, 409, 429) and any(s in str(r.get("error", "")).lower() for s in ("daily", "quota", "limit", "today", "most")):
         QUOTA_DONE[unit] = today()
     return code, r
 
@@ -300,9 +300,17 @@ def recover(unit, force=False):
             if not m:
                 time.sleep(15)
                 continue
-        # Health restored in the field: cancel return home / recovery, resume hunt on the spot
-        if m.get("ring") != "camp" and m.get("hp", 0) >= m.get("max_hp", 1) * rules.HOME_BELOW:
-            api.info("[%s] health restored (hp %d/%d >= %d%%): cancel return home, resume hunt on the spot" % (
+        # Health restored in the field (within its own hunting ground): cancel return home / recovery, resume hunt on the spot
+        sq_cfg = rules.HERO_CONFIGS.get(unit, {})
+        sq_center = sq_cfg.get("center")
+        in_hunting_ground = (
+            not nav.at_tribe(m)
+            and m.get("ring") != "camp"
+            and (not sq_cfg.get("rings") or m.get("ring") in sq_cfg["rings"])
+            and (not sq_center or max(abs(m.get("x", 0) - sq_center[0]), abs(m.get("y", 0) - sq_center[1])) <= getattr(rules, "TARGET_MAX_DIST", 25))
+        )
+        if in_hunting_ground and m.get("hp", 0) >= m.get("max_hp", 1) * rules.HOME_BELOW:
+            api.info("[%s] health restored in field (hp %d/%d >= %d%%): resume hunt on the spot" % (
                 api.who(unit), m["hp"], m["max_hp"], int(rules.HOME_BELOW * 100)))
             return True
         if m.get("ring") == "camp":
@@ -342,10 +350,11 @@ def recover(unit, force=False):
 
 
 def stage_rest(unit, force=False):
-    """Wait for a corrupted land of our kind (landwatch stage), reusing the recovery trip: when depositable
-    goods exceed rules.RECOVER_TRIBE_GOODS or the hero is hurt, go to the tribe directly (storing and
-    resupplying there with deposit_all) and wait on its land; otherwise go home and rest in the camp. Ends
-    when the land is due, so the land squad can take over at once."""
+    """Wait for a corrupted land of our kind (landwatch stage):
+    Reusing recovery logic (recover_goes_to_tribe): when training quota is left
+    or repair without dust is due, go to the tribe, store, repair, and train;
+    otherwise rest peacefully in the camp.
+    Ends when the land is due or stage ends, so heroes take over corrupted land immediately."""
     from . import landwatch, queue
     landwatch._update_stage()
     deposited = False
@@ -360,27 +369,66 @@ def stage_rest(unit, force=False):
         if m.get("hp", 0) <= 0:
             time.sleep(60)
             continue
+        if care.repair_due(m, unit):
+            if care.auto_repair(unit, m):
+                time.sleep(3)
+                fresh, _ = api.me(unit)
+                if fresh:
+                    api.wait_busy(fresh)
+                    care.auto_equip(unit, fresh)
+                care.auto_salvage(unit, fresh)
+                continue
         if nav.at_tribe(m):
             if not deposited:
                 deposit_all(unit)
                 deposited = True
+            if has_quota(unit):
+                nav.walk(unit, nav.TRAINING, 2)
+                api.wait_busy(m)
+                code, r = train_once(unit)
+                t = r.get("today") or {}
+                if code in (200, 202):
+                    state.note(unit, "部落训练 %s/%s (等腐化)" % (t.get("trained"), t.get("most")))
+                    api.debug("[%s] trains at the tribe while waiting for corrupted land: %s %s/%s" % (
+                        api.who(unit), code, t.get("trained"), t.get("most")))
+                    sleep_time = min(62, max(5, int(due) if due is not None else 62))
+                    time.sleep(sleep_time)
+                    continue
+                elif code in (400, 429) and any(w in str(r.get("error", "")).lower() for w in ("point", "ap", "busy")):
+                    api.debug("[%s] train waiting for AP/busy (%s %s)" % (api.who(unit), code, r.get("error")))
+                    sleep_time = min(30, max(5, int(due) if due is not None else 30))
+                    time.sleep(sleep_time)
+                    continue
+                elif not has_quota(unit):
+                    pass
             state.note(unit, "部落等待腐化之地")
-            time.sleep(30)
+            time.sleep(min(30, max(5, int(due) if due is not None else 30)))
             continue
-        if m["hp"] < m["max_hp"] * rules.HEALED:
-            if go(unit, patience=0, force=force):
-                deposit_all(unit)
-                deposited = True
+
+        if recover_goes_to_tribe(unit, m):
+            if m.get("ring") == "camp":
+                if not force and (not nav.can_reach_tribe(m) or m.get("ap", 0) < rules.TRIP_MIN_AP):
+                    state.note(unit, "营地等待AP(%d/%d)" % (m.get("ap", 0), rules.TRIP_MIN_AP))
+                    care.eat(unit, m)
+                    time.sleep(min(30, max(5, int(due) if due is not None else 30)))
+                    continue
+            elif not force and m.get("ap", 0) < rules.TRIP_MIN_AP:
+                if not queue._go_home(unit, "the corrupted-land wait: AP low for tribe walk"):
+                    return False
                 continue
-            if m.get("ring") != "camp" and not queue._go_home(unit, "the corrupted-land wait: home to rest in the camp"):
-                return False
+            if not go(unit, patience=0, force=force):
+                if m.get("ring") != "camp" and not queue._go_home(unit, "the corrupted-land wait: home to rest in the camp"):
+                    return False
+                time.sleep(15)
+                continue
             continue
+
         if m.get("ring") != "camp":
             if not queue._go_home(unit, "the corrupted-land wait: home to rest in the camp"):
                 return False
             continue
         state.note(unit, "营地等待腐化之地")
-        time.sleep(30)
+        time.sleep(min(30, max(5, int(due) if due is not None else 30)))
     return True
 
 
@@ -485,7 +533,9 @@ def visit(unit, train=0, heal=False, patience=None, max_minutes=25, force=False,
                 time.sleep(30)
                 continue
             elif not has_quota(unit):
-                pass  # the server confirmed that today's training is exhausted
+                if not heal:
+                    break
+                pass  # the server confirmed that today's training is exhausted, but still healing
             else:
                 api.warning("[%s] training failed (%s %s): stopping this visit" % (api.who(unit), code, str(r.get("error"))[:60]))
                 return False
@@ -520,7 +570,7 @@ def _everyone_ready(ap, group=None):
         return _muster["ready"]
     _muster["at"] = now
     _muster["group"] = group
-    units = list(group) if group else [u for sq in rules.SQUADS.values() for u in sq["members"]]
+    units = list(group) if group else list(rules.HERO_CONFIGS.keys())
     waiting = []
     for u in units:
         m, _ = api.me(u)
@@ -546,7 +596,7 @@ def muster(unit, ap=70, squad=False):
         from . import queue
         if queue.waiting(unit):   # another order is queued behind the muster (`gather`): the others have left already
             return True
-        group = next((tuple(sq["members"]) for sq in rules.SQUADS.values() if unit in sq["members"]), None) if squad else None
+        group = (unit,) if squad else None
         if _everyone_ready(ap, group):
             api.info("[muster %s] everybody is ready: off to the tribe" % (api.who(unit)))
             return True

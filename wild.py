@@ -42,11 +42,11 @@ def status():
         print("read failed")
         return
     rows = [dict(m, at=[m["x"], m["y"]], unit=None)] + [dict(u, unit=u["hero"]) for u in m["units"]]
-    print("| 成员 | 分工 | 等级 | 经验 | 血量 | 行动点 | 饱食 | 位置 | 队列 | 备注 |")
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    print("| 成员 | 等级 | 经验 | 血量 | 行动点 | 饱食 | 位置 | 队列 | 备注 |")
+    print("|---|---|---|---|---|---|---|---|---|")
     queues = queue.read()
     try:
-        last_xp = json.load(open("xp_last.json", encoding="utf-8"))
+        last_xp = json.load(open(XP_LAST, encoding="utf-8"))
     except (OSError, ValueError):
         last_xp = {}
     for r in rows:
@@ -76,10 +76,10 @@ def status():
             note.append(" ".join(mats))
         q = queues.get(key) or {}
         qtext = " → ".join(([">" + q["running"]] if q.get("running") else []) + (q.get("waiting") or [])) or "打怪"
-        print("| %s | %s | %s | %s | %s/%s | %s | %s | %s | %s | %s |" % (
-            unit or "主角", rules.squad_name(unit), r["level"], xp, r["hp"], r["max_hp"], r["ap"], r["food"],
+        print("| %s | %s | %s | %s/%s | %s | %s | %s | %s | %s |" % (
+            unit or "主角", r["level"], xp, r["hp"], r["max_hp"], r["ap"], r["food"],
             where(full, r), qtext, "、".join(note)))
-    with open("xp_last.json", "w", encoding="utf-8") as f:
+    with open(XP_LAST, "w", encoding="utf-8") as f:
         json.dump(last_xp, f)
     t = tribe.info()
     if t:
@@ -98,28 +98,29 @@ def guarded(name, fn, *args, **kw):
         print("[job %s] crashed:\n%s" % (name, traceback.format_exc()), flush=True)
 
 
+def hunters():
+    """All autonomous hunters based on rules.HERO_CONFIGS."""
+    return [hunt.Hunter(unit=u, **cfg) for u, cfg in rules.HERO_CONFIGS.items()]
+
+
 def squads():
-    """The hunting parties of rules.SQUADS, each on its own side of the camp."""
-    return [hunt.Squad(name, s["members"], hero_goal=s.get("hero_goal", rules.HERO_GOAL),
-                       region=REGIONS[s["region"]], claims_bounties=s.get("bounties", False), elites=s.get("elites", False),
-                       rings=s.get("rings"), close=s.get("close"),
-                       bread=s.get("bread", False), bandage=s.get("bandage", False), center=s.get("center"), land=s.get("land", False))
-            for name, s in rules.SQUADS.items()]
+    """Alias for hunters."""
+    return hunters()
 
 
-def gear_groups(parties):
-    """Gear is dealt inside each squad only."""
-    return [list(p.members) for p in parties if not getattr(p, "land", False)]
+def gear_groups(parties=None):
+    """Gear is dealt across all active heroes."""
+    return [list(rules.HERO_CONFIGS.keys())]
 
 
 def plan():
-    """What runs: the hunting squads, the queues (restored from the last run first), the hand orders, the gear rounds,
-    the Abyss watch, the way into the tribe and the skill.md watch."""
+    """What runs: autonomous hunters, queues, hand orders, gear rounds,
+    Abyss watch, tribe access and skill.md watch."""
     api.info("[system] wild.py daemon started / restarted (PID %d)" % os.getpid())
     landwatch._update_stage()
     queue.restore()
-    parties = squads()
-    jobs = {p.name: p.run for p in parties}
+    parties = hunters()
+    jobs = {"hunt_%s" % p.name: p.run for p in parties}
     jobs.update({
         "abyss": abyss.watch,                               # everybody >= L7 (or abyss.go): bank points, go in
         "ladder": ladder.watch,                             # 19:30 (UTC+8) every evening: all heroes join the main character, the squad ladder
@@ -169,10 +170,13 @@ def stamp_output():
     sys.stdout = _Stamped(sys.stdout)
 
 
+XP_LAST = os.path.join(api.HERE, "xp_last.json")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("status", "run", "rules", "identify", "skillcheck", "model", "danger", "abyss"):
+    for name in ("status", "run", "rules", "identify", "skillcheck", "model", "danger", "abyss", "gears"):
         sub.add_parser(name)
     s = sub.add_parser("gear", help="show (--dry) or run one round of the gear dealing")
     s.add_argument("--dry", action="store_true")
@@ -202,6 +206,9 @@ def main():
     s = sub.add_parser("unstash")
     s.add_argument("item", type=int)
     s.add_argument("--unit", type=int, default=0)
+    s = sub.add_parser("stash")
+    s.add_argument("item", type=int)
+    s.add_argument("--unit", type=int, default=0)
     s = sub.add_parser("fx", help="the coin exchange (https://agentwild.fun/exchange): trade coins for BOLT")
     s.add_argument("action", nargs="?", default="status", choices=["status", "book", "buy", "sell", "cancel", "withdraw", "voucher"])
     s.add_argument("args", nargs="*", help="arguments for fx action")
@@ -214,6 +221,8 @@ def main():
         plan()
     elif a.cmd == "rules":
         print("\n".join(rules.describe()))
+    elif a.cmd == "gears":
+        gear.show_all_gear()
     elif a.cmd == "gear":
         groups = gear_groups(squads())
         if a.all:   # everybody standing on the tribe's land is one pool (gear is dealt to the highest level first)
@@ -259,6 +268,10 @@ def main():
     elif a.cmd == "unstash":
         unit = None if a.unit == 0 else a.unit
         code, r = api.act(unit, {"action": "unstash", "item": a.item})
+        print(code, json.dumps(api.clean(r), ensure_ascii=False)[:200])
+    elif a.cmd == "stash":
+        unit = None if a.unit == 0 else a.unit
+        code, r = api.act(unit, {"action": "stash", "item": a.item})
         print(code, json.dumps(api.clean(r), ensure_ascii=False)[:200])
     elif a.cmd == "give":  # GOODS may also be item:ID to hand over a piece of gear
         src = None if a.src == 0 else a.src

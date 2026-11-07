@@ -8,17 +8,24 @@ from wild import landwatch, nav, queue, tribe
 
 
 def hero(**kw):
-    m = {"x": 200, "y": 200, "ring": "forest", "hp": 100, "max_hp": 100, "ap": 100, "level": 15, "bag": {}}
+    m = {
+        "x": 200, "y": 200, "ring": "forest", "hp": 100, "max_hp": 100, "ap": 100, "level": 15, "bag": {},
+        "waypoints": [{"ring": "forest", "open": True}],
+    }
     m.update(kw)
     return m
 
 
 class StageRestTests(unittest.TestCase):
-    def run_stage(self, reads, dues, go_result=True):
+    def run_stage(self, reads, dues, go_result=True, quota=True):
         with mock.patch.dict(landwatch.STATE, {"stage": True, "on": False}), \
+                mock.patch.object(landwatch, "_update_stage", return_value=None), \
                 mock.patch.object(landwatch, "due_in", side_effect=dues), \
                 mock.patch.object(queue, "waiting", return_value=False), \
                 mock.patch.object(tribe.api, "me", side_effect=reads), \
+                mock.patch.object(tribe, "has_quota", return_value=quota), \
+                mock.patch.object(tribe, "train_once", return_value=(200, {"today": {"trained": 1, "most": 5}})), \
+                mock.patch.object(nav, "walk", return_value=True), \
                 mock.patch.object(tribe, "go", return_value=go_result) as go, \
                 mock.patch.object(tribe, "deposit_all") as deposit, \
                 mock.patch.object(tribe.state, "note", return_value=None), \
@@ -28,17 +35,27 @@ class StageRestTests(unittest.TestCase):
         return done, go, deposit
 
     def test_goods_make_the_wait_a_tribe_trip(self):
-        # The user removed goods from tribe triggers: hurt heroes recover at tribe
+        # Hero with training quota goes to tribe and deposits/trains
         field = hero(hp=50, max_hp=100)
         at_tribe = hero(x=nav.TOTEM[0], y=nav.TOTEM[1], ring="forest", hp=50, max_hp=100)
-        done, go, deposit = self.run_stage([(field, None), (at_tribe, None)], [100, 100, 0])
+        done, go, deposit = self.run_stage([(field, None), (at_tribe, None)], [100, 100, 0], quota=True)
+        self.assertTrue(done)
+        go.assert_called_once()
+        deposit.assert_called_once_with(928)
+
+    def test_training_quota_goes_to_tribe(self):
+        # Even healthy hero in camp goes to tribe if training quota is left
+        camp = hero(ring="camp", x=256, y=256, hp=100, max_hp=100)
+        at_tribe = hero(x=nav.TOTEM[0], y=nav.TOTEM[1], ring="forest", hp=100, max_hp=100)
+        done, go, deposit = self.run_stage([(camp, None), (at_tribe, None)], [100, 100, 0], quota=True)
         self.assertTrue(done)
         go.assert_called_once()
         deposit.assert_called_once_with(928)
 
     def test_nothing_worthwhile_rests_in_the_camp(self):
+        # Hero in camp with no training quota rests peacefully in camp
         camp = hero(ring="camp", x=256, y=256)
-        done, go, deposit = self.run_stage([(camp, None)], [100, 0])
+        done, go, deposit = self.run_stage([(camp, None)], [100, 0], quota=False)
         self.assertTrue(done)
         go.assert_not_called()
         deposit.assert_not_called()

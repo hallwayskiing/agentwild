@@ -54,7 +54,7 @@ def fight_back(u, m, near):
                     api.wait_busy(fresh)
             if fresh["hp"] < ABORT * fresh["max_hp"]:
                 return False   # going badly: the caller sends it home
-            code, r = api.act(u, {"action": "attack", "target": t["id"], "rounds": 4, "stop_below": int(100 * ABORT)})
+            code, r = api.act(u, {"action": "attack", "target": t["id"], "rounds": 6, "stop_below": int(100 * ABORT)})
             if code == 200:
                 nxt = api.after_attack(fresh, r)
                 if nxt:

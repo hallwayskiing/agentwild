@@ -62,7 +62,7 @@ explicit orders below, then experience.
 
 
 
-LORD = 928                       # the staked demon lord
+LORD = None                       # the staked demon lord (main character)
 
 
 
@@ -110,17 +110,25 @@ LORD = 928                       # the staked demon lord
 
 
 
+# Per-hero autonomous hunting configurations (no squads)
+HERO_CONFIGS = {
+    None: {"center": (410, 256), "rings": ("highlands",), "elites": True, "bounties": True, "bread": True, "bandage": True, "hero_goal": 99},
+    926:  {"center": (155, 175), "rings": ("forest", "highlands"), "elites": True, "bounties": True, "bread": True, "bandage": True, "hero_goal": 99},
+    925:  {"center": (330, 330), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    927:  {"center": (360, 270), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    929:  {"center": (180, 320), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    930:  {"center": (256, 360), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    931:  {"center": (300, 160), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    932:  {"center": (360, 210), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    933:  {"center": (152, 256), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+    934:  {"center": (230, 155), "rings": ("forest",), "bread": True, "bandage": True, "hero_goal": 15},
+}
+HEROES = list(HERO_CONFIGS.keys())
+
+# Compatibility alias
 SQUADS = {
-    "astral": {"zh": "Astral", "members": [None], "hero_goal": 99, "rings": ("forest",), "region": "westN", "center": (180, 192),
-               "elites": True, "bounties": True, "bread": True, "bandage": True},
-    "ember": {"zh": "Ember", "members": [928], "hero_goal": 99, "rings": ("highlands",), "region": "eastN", "center": (410, 220),
-              "elites": True, "bounties": True, "bread": True, "bandage": True},
-    "silverwing": {"zh": "Silverwing", "members": [925, 932, 934], "hero_goal": 15, "rings": ("forest",), "region": "eastS", "center": (344, 320),
-                   "bread": True, "bandage": True},
-    "nightjar": {"zh": "Nightjar", "members": [929, 930, 933], "hero_goal": 15, "rings": ("forest",), "region": "westS", "center": (180, 320),
-                 "bread": True, "bandage": True},
-    "solstice": {"zh": "Solstice", "members": [927, 931], "hero_goal": 15, "rings": ("forest",), "region": "east", "center": (378, 256),
-                 "bread": True, "bandage": True},
+    str(u or 0): {"zh": "主角" if u is None else str(u), "members": [u], **cfg}
+    for u, cfg in HERO_CONFIGS.items()
 }
 
 
@@ -153,7 +161,7 @@ REGION_SPLIT_X = 256
 
 
 
-AUTO_HUNT = True                 # squads hunt automatically whenever free
+AUTO_HUNT = False                # squads hunt automatically whenever free
 
 
 
@@ -302,6 +310,7 @@ CORRUPT_LAND = {"period": 7200,          # a land starts every 2 hours ...
 
 LEVEL_SPAN = 3                   # targets up to the finisher's level +3 ...
 MAX_LEVEL_DIFF = 5               # never attack or retaliate against a creature >5 levels below us (the owner, 2026-11-06)
+TARGET_MAX_DIST = 25              # pick target max distance limit (tiles): never chase creatures >20 tiles away (the owner, 2026-11-06)
 
 
 
@@ -421,6 +430,8 @@ FIGHT_FLOOR = 0.20               # shared threshold: pre-fight model, stop line 
 
 
 
+MAX_AP = 300                      # maximum action points (Boltbook server limit)
+DRIFT_MIN_AP_SHARE = 0.50         # drift towards center only when AP > 50% (the owner, 2026-11-06)
 TRIP_MIN_AP = 25                 # 8 AP waypoint + about 16 AP walk, with room for home and variation
 
 
@@ -657,6 +668,7 @@ ROAST_BATCH = 10                  # raw meat is never eaten: cook this many into
 
 
 
+AUTO_BALANCE_GEAR = False        # 自动匀装备开关：已关闭（由营地个人仓库机制替代现场匀装）
 GEAR_GAIN = 2.0                  # gear is dealt out inside each squad only, to the lord first, when a piece beats by this
 
 
@@ -665,7 +677,7 @@ GEAR_GAIN = 2.0                  # gear is dealt out inside each squad only, to 
 
 
 
-GEAR_PRIORITY = (LORD, None)      # owner: lord first (weapon locked), main second, then fill the other heroes' slots
+GEAR_PRIORITY = (None, 933, 932)   # Main first, then 933 as deputy, then 932 third best
 
 
 
@@ -681,7 +693,7 @@ UPKEEP_EVERY = 300               # seconds between the one periodic check: talen
 
 
 
-LOCKED_SLOTS = {928: ("weapon", "tool"), None: ("weapon",)}   # lord's weapon & tool locked, main's weapon locked
+LOCKED_SLOTS = {}                 # 装备槽完全不锁定，允许全自动按评分分配
 
 
 
@@ -745,7 +757,7 @@ IDENTIFY_KEEP_COINS = 12         # identify drops in the camp while at least thi
 
 
 
-IDENTIFY_MIN_LEVEL = 10          # automatically identify equipment level 10 and above
+IDENTIFY_MIN_LEVEL = 10          # automatically identify treasured equipment >= level 10
 
 
 
@@ -921,7 +933,7 @@ def squad_name(unit):
 
 
 
-    return next((v["zh"] for v in SQUADS.values() if unit in v["members"] and not v.get("land")), "")
+    return "单兵" if unit is not None else "主角"
 
 
 
@@ -961,7 +973,7 @@ def describe():
 
 
 
-    sq = "；".join("%s：%s" % (v["zh"], "、".join("主角" if u is None else str(u) for u in v["members"])) for v in SQUADS.values())
+    sq = "；".join("%s(中心%s)" % ("主角" if u is None else str(u), cfg.get("center")) for u, cfg in HERO_CONFIGS.items())
 
 
 
@@ -1025,7 +1037,7 @@ def describe():
 
 
 
-        "【小队】" + sq + "；各队只打自己区域的怪，找不到怪就往本队中心点靠拢；魔王可打精英、领每日悬赏",
+        "【模式】全面单兵独立作战（彻底移除小队机制）；各英雄分散独立狩猎，无怪物则向各自中心点靠拢；魔王可打精英、领每日悬赏",
 
 
 
@@ -1145,15 +1157,7 @@ def describe():
 
 
 
-        "【装备】品质第一（珍藏>符刻>普通），同品质比数值；只在各小队内部、相距≤%d 格的人之间调配，魔王优先，提升≥%.0f 才换；不自动用符文；"
-
-
-
-
-
-
-
-        "魔王的武器锁定；只自动鉴定 %d 级及以上装备；挂交易所：%s" % (GEAR_REACH, GEAR_GAIN, IDENTIFY_MIN_LEVEL, "开" if SELL_SURPLUS else "关"),
+        "【装备】品质第一（神话>珍藏>符刻>普通）；自动匀装备：关（已停用现场调配，由营地个人仓库自动流转）；魔王武器锁定；只自动鉴定高于 10 级珍藏装备；回营地自动存取个人仓库（先于自动分解）；挂交易所：%s" % ("开" if SELL_SURPLUS else "关"),
 
 
 

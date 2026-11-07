@@ -26,9 +26,9 @@ main{padding:16px 20px;max-width:1700px;margin:auto}
 .xp i{background:linear-gradient(90deg,#2f9d68,var(--xp))}.fd i{background:linear-gradient(90deg,#b97d2e,var(--food))}
 .wood i{background:#b98a52}.stone i{background:#9aa6b6}.ore i{background:#e08a45}
 .wrap{overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
-table{width:100%;border-collapse:collapse;min-width:1250px}
-th{position:sticky;top:0;background:var(--panel2);color:var(--mut);font-weight:500;font-size:12px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
-td{padding:7px 10px;border-bottom:1px solid #20262f;vertical-align:middle}
+table{width:100%;border-collapse:collapse;min-width:1640px;table-layout:fixed}
+th{position:sticky;top:0;background:var(--panel2);color:var(--mut);font-weight:500;font-size:12px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+td{padding:7px 10px;border-bottom:1px solid #20262f;vertical-align:middle;word-break:break-word}
 tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a1717}
 .nm{font-weight:650}.lv{display:inline-block;margin-left:6px;padding:0 6px;border-radius:5px;background:var(--c);color:#0b0d11;font-size:11px;font-weight:700}
 .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;border:1px solid var(--c);color:var(--c);white-space:nowrap}
@@ -44,36 +44,51 @@ tr:hover td{background:#1b2029}tr.old td{opacity:.45}tr.down td{background:#2a17
 .feed div{padding:1px 6px;border-left:2px solid transparent;word-break:break-word}
 .feed .kill{border-color:var(--xp);color:#b8f0d3}.feed .bad{border-color:var(--hp);color:#ffb0b0;background:#2a1717}
 .feed .go{border-color:var(--A);color:#f6dd9f}.feed .mut{color:#667082}.feed .gear{border-color:var(--B);color:#d6c1ff}
+@keyframes land-pulse{0%,100%{box-shadow:0 0 0 0 rgba(192,132,252,.7)}50%{box-shadow:0 0 0 8px rgba(192,132,252,0)}}
+.loc-corrupted{background:#3b1d54;color:#e9d5ff;border:1px solid #a855f7;border-radius:4px;padding:1px 6px;font-weight:700;display:inline-block;animation:land-pulse 2.5s infinite}
 </style>
 <header><h1>AGENT <b>WILDS</b> · 指挥台</h1><div class="live"><span class="dot" id="dot"></span><span id="t">连接中…</span></div></header>
 <main>
 <p class="sect">英雄一览</p>
-<div class="wrap"><table><thead><tr>
+<div class="wrap"><table>
+<colgroup>
+<col style="width:75px">
+<col style="width:100px">
+<col style="width:55px">
+<col style="width:115px">
+<col style="width:120px">
+<col style="width:110px">
+<col style="width:110px">
+<col style="width:90px">
+<col style="width:175px">
+<col style="width:210px">
+<col style="width:145px">
+<col style="width:180px">
+<col style="width:155px">
+</colgroup>
+<thead><tr>
 <th>英雄</th><th>职业</th><th>等级</th><th>经验</th><th>经验变化 (10分钟)</th><th>生命</th><th>行动点</th><th>饱食</th><th>位置 / 目标</th><th>任务 / 当前动作</th><th>背包材料</th><th>装备 / 战力</th><th>金币 / 食物</th>
 </tr></thead><tbody id="rows"></tbody></table></div>
 <p class="sect">实时活动 <span id="lv"></span></p><div class="feed" id="l"></div>
 </main>
 <script>
-const COL={ember:'#e0603c',solstice:'#43c985',silverwing:'#5ab0f2',nightjar:'#b78cff',astral:'#f2b84b'};
+const RING={tribe:'部落',camp:'营地',meadow:'草甸',forest:'森林',highlands:'高地',ashlands:'灰烬之地',ruins:'遗迹'};
+const RING_ICON={tribe:'🛖',camp:'⛺',meadow:'🌱',forest:'🌲',highlands:'⛰️',ashlands:'🌋',ruins:'🏛️'};
+const RES={wood:'木',stone:'石',ore:'铜矿',iron_ore:'铁矿',starmetal_ore:'星银',herb:'草',bone:'骨',grain:'谷物'};
 let SQ={};
-const RING={camp:'营地',meadow:'草甸',forest:'森林',highlands:'高地',ashlands:'灰烬之地',ruins:'遗迹'};
-const RES={wood:'木材',stone:'石头',ore:'铜矿',copper_ore:'铜矿',iron_ore:'铁矿',hide:'兽皮',herb:'草药',bone:'兽骨',dust:'符尘',whetstone:'磨刀石',plating:'护甲片',wheat_seed:'麦种',wheat:'小麦'};
-const pct=(a,b)=>b?Math.max(0,Math.min(100,100*a/b)):0;
 const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const bar=(cls,a,b)=>`<div class="bar ${cls}"><i style="width:${pct(a,b)}%"></i></div>`;
+const bar=(cls,v,max)=>`<div class="bar ${cls}"><i style="width:${Math.min(100,Math.max(0,Math.round((v||0)*100/(max||1))))}%"></i></div>`;
 function row(h,now){
- const age=Math.round(now-h.at),c=COL[h.squad]||'#8b95a5',low=h.hp<0.35*h.max_hp;
- const mats=Object.entries(h.mats||{}).map(([k,v])=>`<span class="${k==='dust'?'dust':''}">${RES[k]||k} ${v}</span>`).join('')||'<span class=mut>空</span>';
- const job=h.job?`<span class="job">${RES[h.job]||h.job}</span> · `:'';
- const nage=h.note_at?Math.round(now-h.note_at):0;
- const fd=h.food;
+ const low=h.hp<h.max_hp*.3,fd=h.food,age=h.at?now-h.at:0,nage=h.note_at?Math.round(now-h.note_at):null;
+ const mats=Object.entries(h.mats||{}).map(([k,v])=>`<span class="${k}">${esc(RES[k]||k)} ${v}</span>`).join('')||'<span class=mut>-</span>';
  const tgtHtml=(h.target&&(!h.target.age||h.target.age<180))?`<div class=tgt>→ ${h.target.x}, ${h.target.y} <small>(${esc(RES[h.target.label]||h.target.label)})</small></div>`:'<small class=mut>无目标</small>';
  const taskHtml=h.queue_zh?`<span class="task-pill">${esc(h.queue_zh)}</span><br>`:'';
  const actHtml=`<div class="act">${esc(h.note||'待命')}</div>`;
  const extra=[h.lease?('租约: '+esc(h.lease)):'',nage?(nage+'s 前'):''].filter(Boolean).join(' · ');
  const leaseHtml=extra?`<div class=note>${extra}</div>`:'';
+ const locHtml=h.in_corrupted_land ? `<span class="loc-corrupted" title="处于腐化之地内部">💀 腐化之地</span>` : `<span class=loc-ring>${RING_ICON[h.ring]||'📍'} ${RING[h.ring]||h.ring||'-'}</span>`;
  return `<tr class="${age>240?'old':''} ${h.down?'down':''}">
- <td><span class=nm>${h.name}</span><br><span class=pill style="--c:${c}">${SQ[h.squad]||h.squad||'-'}</span></td>
+ <td><span class=nm>${h.name}</span></td>
  <td>${h.title||'-'}</td>
  <td><div class=num>L${h.level}</div></td>
  <td><div class=num>${h.xp}<small> / ${h.xp_next}</small></div>${bar('xp',h.xp,h.xp_next)}</td>
@@ -81,7 +96,7 @@ function row(h,now){
  <td><div class="num ${low?'low':''}">${h.hp}<small> / ${h.max_hp}</small></div>${bar('hp',h.hp,h.max_hp)}</td>
  <td><div class=num>${h.ap}<small> / ${h.ap_max||'-'}</small></div>${bar('ap',h.ap,h.ap_max||320)}</td>
  <td><div class="num ${fd!=null&&fd<40?'warn':''}">${fd==null?'-':fd}<small> / 100</small></div>${bar('fd',fd||0,100)}</td>
- <td><span class=loc-ring>${RING[h.ring]||h.ring||'-'}</span> <small class=mut>(${h.x!=null?h.x:'-'}, ${h.y!=null?h.y:'-'})</small><br>${tgtHtml}</td>
+ <td>${locHtml} <small class=mut>(${h.x!=null?h.x:'-'}, ${h.y!=null?h.y:'-'})</small><br>${tgtHtml}</td>
  <td>${taskHtml}${actHtml}${leaseHtml}</td>
  <td class=mats>${mats}</td>
  <td>${h.weapon?h.weapon+' L'+h.weapon_level:'<span class=low>无武器</span>'}${h.offhand?'<br><small class=mut>副手 '+esc(h.offhand)+' L'+h.offhand_level+' '+h.offhand_dur+'/'+h.offhand_max+'</small>':''}<br><small class=mut>${h.tool?h.tool+' '+h.tool_dur+'/'+h.tool_max:'无工具'} · 战力 ${h.power??'-'}</small></td>
